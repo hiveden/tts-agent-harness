@@ -207,9 +207,25 @@ async function callClaude(prompt) {
 // Prompts
 // =============================================================
 
-function buildValidatePrompt(original, normalized, transcribed) {
-  return `你是一个中文 TTS 语音质量校验员。
+// --- 加载 rules.md ---
+let _rulesContent = null;
+function loadRules() {
+  if (_rulesContent !== null) return _rulesContent;
+  const rulesPath = path.join(resolvedHarnessDir, ".harness", "rules.md");
+  try {
+    _rulesContent = fs.readFileSync(rulesPath, "utf-8");
+  } catch {
+    _rulesContent = "";
+  }
+  return _rulesContent;
+}
 
+function buildValidatePrompt(original, normalized, transcribed) {
+  const rules = loadRules();
+  const rulesSection = rules ? `\n## 业务规则（必须遵守）\n\n${rules}\n` : "";
+
+  return `你是一个中文 TTS 语音质量校验员。
+${rulesSection}
 ## 输入
 
 **原始脚本文本（用于字幕显示）**:
@@ -267,8 +283,11 @@ function buildFixPrompt(normalized, issues) {
     .map((i) => `- [${i.type}] "${i.original}" → "${i.transcribed}" | 建议: ${i.fix}`)
     .join("\n");
 
-  return `你是一个 TTS 文本优化专家。
+  const rules = loadRules();
+  const rulesSection = rules ? `\n## 业务规则（必须遵守）\n\n${rules}\n` : "";
 
+  return `你是一个 TTS 文本优化专家。
+${rulesSection}
 ## 当前 TTS 输入文本
 ${normalized}
 
@@ -277,11 +296,11 @@ ${issueList}
 
 ## 任务
 
-根据上述问题修改 TTS 输入文本，使 TTS 能正确朗读。修改原则：
+根据上述问题和业务规则修改 TTS 输入文本，使 TTS 能正确朗读。修改原则：
 - 只修改有问题的部分，不改其他内容
 - 保持语义不变
-- 用中文替代容易误读的符号和数字
-- 英文缩写/品牌名如果被误读，加空格或用中文标注
+- 不要把英文人名翻译成中文音译
+- 优先调断句/格式，不改原始含义
 
 严格输出 JSON，不要有任何其他内容：
 {
