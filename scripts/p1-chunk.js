@@ -47,7 +47,9 @@ function normalize(text) {
   t = t.replace(/\(停顿.*?\)/g, "");
 
   // 特殊符号替换
-  // 数字范围 dash → 到（排除日期格式 YYYY-MM-DD：4位数+dash+2位数+dash+2位数）
+  // 英文连字符 → 空格（yoyo-evolve → yoyo evolve, Natural-Language → Natural Language）
+  t = t.replace(/([a-zA-Z])-([a-zA-Z\u4e00-\u9fff])/g, "$1 $2");
+  // 数字范围 dash → 到（排除日期格式 YYYY-MM-DD）
   t = t.replace(/(?<!\d)(\d{1,3})\s*-\s*(\d{1,5})(?![/-]\d)/g, "$1到$2"); // 28-35 → 28到35
   t = t.replace(/(\d+)%/g, "百分之$1"); // 53% → 百分之53
 
