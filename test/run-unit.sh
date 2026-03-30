@@ -393,6 +393,41 @@ rm -rf "$WORK"
 # trace.js Tests
 # ------------------------------------------------
 echo ""
+echo "--- P1: Merge with existing chunks ---"
+
+# Test: P1 re-run preserves duration_s and file from existing chunks.json
+MERGE_WORK=$(mktemp -d)
+# First run: create chunks
+node "$HARNESS/scripts/p1-chunk.js" --script "$HARNESS/example/demo-script.json" --outdir "$MERGE_WORK" >/dev/null 2>&1
+
+# Simulate P2 having set runtime fields
+node -e "
+  const fs=require('fs');
+  const c=require('$MERGE_WORK/chunks.json');
+  c[0].duration_s=9.5;
+  c[0].file='shot01_chunk01.wav';
+  c[0].status='validated';
+  c[1].duration_s=15.2;
+  c[1].file='shot02_chunk01.wav';
+  c[1].status='transcribed';
+  fs.writeFileSync('$MERGE_WORK/chunks.json',JSON.stringify(c,null,2));
+"
+
+# Re-run P1 (same script, no text changes)
+node "$HARNESS/scripts/p1-chunk.js" --script "$HARNESS/example/demo-script.json" --outdir "$MERGE_WORK" >/dev/null 2>&1
+
+run_test "P1 merge: preserves duration_s after re-run" \
+  "node -e \"const c=require('$MERGE_WORK/chunks.json'); process.exit(c[0].duration_s===9.5?0:1)\""
+
+run_test "P1 merge: preserves file after re-run" \
+  "node -e \"const c=require('$MERGE_WORK/chunks.json'); process.exit(c[0].file==='shot01_chunk01.wav'?0:1)\""
+
+run_test "P1 merge: preserves status when text unchanged" \
+  "node -e \"const c=require('$MERGE_WORK/chunks.json'); process.exit(c[0].status==='validated'?0:1)\""
+
+rm -rf "$MERGE_WORK"
+
+echo ""
 echo "--- Trace ---"
 
 WORK=$(mktemp -d)
