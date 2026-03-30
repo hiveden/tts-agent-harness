@@ -98,8 +98,9 @@ function normalize(text) {
   t = t.replace(/(?<!\d)(\d{1,3})\s*-\s*(\d{1,5})(?![/-]\d)/g, "$1到$2"); // 28-35 → 28到35
   t = t.replace(/(\d+)%/g, "百分之$1"); // 53% → 百分之53
 
-  // 英文品牌名后加句号隔断（中英交界）
-  t = t.replace(/([a-zA-Z]{2,})([\u4e00-\u9fff])/g, "$1. $2");
+  // 中英交界加句号隔断（双向）
+  t = t.replace(/([a-zA-Z]{2,})([\u4e00-\u9fff])/g, "$1. $2");  // 英→中: Karpathy发 → Karpathy. 发
+  t = t.replace(/([\u4e00-\u9fff\d])([A-Z][a-zA-Z]{1,})/g, "$1. $2");  // 中/数→英(大写开头): 7号Karpathy → 7号. Karpathy
 
   return t.replace(/\s+/g, " ").trim();
 }

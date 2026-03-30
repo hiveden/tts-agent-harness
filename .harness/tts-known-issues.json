@@ -1,1 +1,14 @@
-[]
+[
+  {
+    "pattern": ".Karpathy → Carpacy",
+    "type": "tts_engine_limitation",
+    "episode": "shot01",
+    "created": "2026-03-30T10:57:54.431Z"
+  },
+  {
+    "pattern": ".The Karpathy Loop → 的Carpacy Loop",
+    "type": "tts_engine_limitation",
+    "episode": "shot01",
+    "created": "2026-03-30T10:57:54.432Z"
+  }
+]
