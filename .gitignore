@@ -1,0 +1,10 @@
+.venv/
+.work/
+node_modules/
+*.wav
+*.mp3
+.env
+__pycache__/
+*.pyc
+.DS_Store
+.idea/

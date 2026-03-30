@@ -1,0 +1,26 @@
+{
+  "title": "TTS Harness Demo — Mixed Language Stress Test",
+  "description": "Tests the pipeline with Chinese-English mixed content, brand names, numbers, and technical terms — the real pain points.",
+  "segments": [
+    {
+      "id": 1,
+      "type": "hook",
+      "text": "3月7号Karpathy发了630行代码，autoResearch，23天60000 stars。Fortune杂志叫它The Karpathy Loop。"
+    },
+    {
+      "id": 2,
+      "type": "content",
+      "text": "yoyo-evolve，一个Rust写的agent，每8小时自动改一轮自己的源码。它的操作对象是自身代码，评估函数是cargo test加mutation testing。约束系统是一个IDENTITY.md，8条不可变规则。Skill Creator 2.0也一样——操作对象是skill描述文本，四要素齐全，连评估函数都用了验证集六四分割。"
+    },
+    {
+      "id": 3,
+      "type": "content",
+      "text": "清华和哈工大深圳发了一篇论文叫NLAH，Natural-Language Agent Harnesses。SOUL.md、CLAUDE.md、cursorrules，论文说这些都是自然语言harness。GEPA被ICLR 2026接收为Oral。"
+    },
+    {
+      "id": 4,
+      "type": "cta",
+      "text": "Agent Loop是现象，Harness Engineering是本质。关注工具人研究所，我们下期见。"
+    }
+  ]
+}
