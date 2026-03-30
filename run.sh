@@ -42,10 +42,17 @@ TRACE="$WORK_DIR/trace.jsonl"
 
 VENV="$HARNESS_DIR/.venv/bin/activate"
 
+# 解析 script 路径：绝对路径直接用，相对路径基于 HARNESS_DIR
+if [[ "$SCRIPT_PATH" == /* ]]; then
+  RESOLVED_SCRIPT="$SCRIPT_PATH"
+else
+  RESOLVED_SCRIPT="$HARNESS_DIR/$SCRIPT_PATH"
+fi
+
 mkdir -p "$WORK_DIR" "$AUDIO_DIR" "$TRANSCRIPT_DIR" "$VALIDATION_DIR" "$OUTPUT_DIR"
 
 # Input hash — detect script changes, force P1 re-run
-SCRIPT_HASH=$(md5 -q "$HARNESS_DIR/$SCRIPT_PATH" 2>/dev/null || md5sum "$HARNESS_DIR/$SCRIPT_PATH" | cut -d' ' -f1)
+SCRIPT_HASH=$(md5 -q "$RESOLVED_SCRIPT" 2>/dev/null || md5sum "$RESOLVED_SCRIPT" | cut -d' ' -f1)
 HASH_FILE="$WORK_DIR/.script_hash"
 if [[ -f "$HASH_FILE" ]] && [[ "$(cat "$HASH_FILE")" != "$SCRIPT_HASH" ]]; then
   echo "  Script changed since last run, forcing re-run from P1"
@@ -80,7 +87,7 @@ if should_run p1; then
   echo ""
   echo "=== P1: Text Chunking ==="
   node "$HARNESS_DIR/scripts/p1-chunk.js" \
-    --script "$HARNESS_DIR/$SCRIPT_PATH" \
+    --script "$RESOLVED_SCRIPT" \
     --outdir "$WORK_DIR" \
     --harness-dir "$HARNESS_DIR"
 fi

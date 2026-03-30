@@ -92,6 +92,13 @@ function normalize(text) {
   t = t.replace(/\(停顿.*?\)/g, "");
 
   // 特殊符号替换
+  // 破折号 → 逗号（防止 TTS 卡带声）
+  t = t.replace(/——/g, "，");
+  t = t.replace(/—/g, "，");
+  // 文件名后缀拆读（.md → 点M D, .jsonl → 点JSON L, .json → 点JSON）
+  t = t.replace(/\.md\b/g, " 点 M D");
+  t = t.replace(/\.jsonl\b/g, " 点 JSON L");
+  t = t.replace(/\.json\b/g, " 点 JSON");
   // 英文连字符 → 空格（yoyo-evolve → yoyo evolve, Natural-Language → Natural Language）
   t = t.replace(/([a-zA-Z])-([a-zA-Z\u4e00-\u9fff])/g, "$1 $2");
   // 数字范围 dash → 到（排除日期格式 YYYY-MM-DD）

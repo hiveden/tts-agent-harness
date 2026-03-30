@@ -10,5 +10,41 @@
     "type": "tts_engine_limitation",
     "episode": "shot01",
     "created": "2026-03-30T10:57:54.432Z"
+  },
+  {
+    "pattern": "solution点md → Solution.md",
+    "type": "tts_engine_limitation",
+    "episode": "shot02",
+    "created": "2026-03-30T13:20:42.713Z"
+  },
+  {
+    "pattern": "CRITERIA点md → CRITBRA.md",
+    "type": "tts_engine_limitation",
+    "episode": "shot02",
+    "created": "2026-03-30T13:20:42.713Z"
+  },
+  {
+    "pattern": "RULES点md → RUULS.md",
+    "type": "tts_engine_limitation",
+    "episode": "shot02",
+    "created": "2026-03-30T13:20:42.713Z"
+  },
+  {
+    "pattern": "memory点jsonl → Memory.tsl",
+    "type": "tts_engine_limitation",
+    "episode": "shot02",
+    "created": "2026-03-30T13:20:42.713Z"
+  },
+  {
+    "pattern": "六百三十 → 630",
+    "type": "tts_engine_limitation",
+    "episode": "shot04",
+    "created": "2026-03-30T13:21:43.786Z"
+  },
+  {
+    "pattern": "stars → TRS",
+    "type": "tts_engine_limitation",
+    "episode": "shot04",
+    "created": "2026-03-30T13:21:43.786Z"
   }
 ]
