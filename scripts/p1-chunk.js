@@ -86,8 +86,8 @@ function normalize(text) {
     }
   }
 
-  // 删除导演标注 [...] 和停顿标记
-  t = t.replace(/\[.*?\]/g, "");
+  // 删除导演标注（保留 S2-Pro 控制标记 [break]、[breath]、[long break]）
+  t = t.replace(/\[(?!break|breath|long[ -]break)[^\]]*\]/g, "");
   t = t.replace(/（停顿.*?）/g, "");
   t = t.replace(/\(停顿.*?\)/g, "");
 
@@ -95,8 +95,6 @@ function normalize(text) {
   // 破折号 → 逗号（防止 TTS 卡带声）
   t = t.replace(/——/g, "，");
   t = t.replace(/—/g, "，");
-  // 全大写英文词转首字母大写（RULES→Rules），防止 TTS 逐字母读卡死
-  t = t.replace(/\b([A-Z]{2,})\b/g, (m) => m[0] + m.slice(1).toLowerCase());
   // 文件后缀替换为中文可读形式（带前置空格，避免后续断句规则误匹配）
   t = t.replace(/\.md\b/g, " 文档");
   t = t.replace(/\.jsonl\b/g, " 文件");
