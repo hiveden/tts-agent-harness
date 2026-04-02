@@ -52,39 +52,12 @@ try {
   // config.json 不存在或格式错误，使用默认值
 }
 
-// --- normalize patches（跨期记忆）---
-let _normalizePatches = null;
-
-function loadNormalizePatches() {
-  if (_normalizePatches !== null) return _normalizePatches;
-  const patchPath = path.join(resolvedHarnessDir, ".harness", "normalize-patches.json");
-  try {
-    _normalizePatches = JSON.parse(fs.readFileSync(patchPath, "utf-8"));
-    if (!Array.isArray(_normalizePatches)) _normalizePatches = [];
-  } catch {
-    _normalizePatches = [];
-  }
-  return _normalizePatches;
-}
-
 // =============================================================
 // 文本规范化（TTS 预处理）
 // =============================================================
 
 function normalize(text) {
   let t = text;
-
-  // 跨期记忆：应用 normalize-patches.json 中的补丁（最先执行）
-  const patches = loadNormalizePatches();
-  for (const patch of patches) {
-    if (patch.pattern && patch.replacement !== undefined) {
-      const before = t;
-      t = t.replaceAll(patch.pattern, patch.replacement);
-      if (t !== before) {
-        console.log(`  [PATCH] ${patch.pattern} → ${patch.replacement}`);
-      }
-    }
-  }
 
   // 删除导演标注（保留 S2-Pro 控制标记 [break]、[breath]、[long break]）
   t = t.replace(/\[(?!break|breath|long[ -]break)[^\]]*\]/g, "");

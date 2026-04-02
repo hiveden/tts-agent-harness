@@ -544,33 +544,6 @@ rm -rf "$CL_WORK"
 echo ""
 echo "--- .harness/ Memory ---"
 
-# Test: P1 applies normalize patches
-PATCH_WORK=$(mktemp -d)
-mkdir -p "$PATCH_WORK/.harness"
-cat > "$PATCH_WORK/.harness/normalize-patches.json" << 'EOF'
-[{"pattern": "TestBrand", "replacement": "测试品牌"}]
-EOF
-cat > "$PATCH_WORK/script.json" << 'EOF'
-{"segments":[{"id":1,"text":"这里有TestBrand和其他内容。第二句话。"}]}
-EOF
-
-node "$HARNESS/scripts/p1-chunk.js" --script "$PATCH_WORK/script.json" --outdir "$PATCH_WORK" --harness-dir "$PATCH_WORK" >/dev/null 2>&1
-
-run_test ".harness: P1 applies normalize patches" \
-  "node -e \"const c=require('$PATCH_WORK/chunks.json'); process.exit(c[0].text_normalized.includes('测试品牌')?0:1)\""
-
-# Test: patch log output
-PATCH_LOG=$(node "$HARNESS/scripts/p1-chunk.js" --script "$PATCH_WORK/script.json" --outdir "$PATCH_WORK" --harness-dir "$PATCH_WORK" 2>&1)
-
-run_test ".harness: P1 logs patch application" \
-  "echo '$PATCH_LOG' | grep -q '\\[PATCH\\]'"
-
-# Test: original text preserved (patches only affect text_normalized)
-run_test ".harness: patches don't alter original text" \
-  "node -e \"const c=require('$PATCH_WORK/chunks.json'); process.exit(c[0].text.includes('TestBrand')?0:1)\""
-
-rm -rf "$PATCH_WORK"
-
 # Test: config.json loads defaults when missing
 NOCONFIG_WORK=$(mktemp -d)
 cat > "$NOCONFIG_WORK/script.json" << 'EOF'

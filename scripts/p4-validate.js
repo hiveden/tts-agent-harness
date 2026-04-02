@@ -88,24 +88,6 @@ function loadKnownIssues() {
   return _knownIssues;
 }
 
-// --- 跨期记忆：写入 normalize-patches.json ---
-function appendNormalizePatch(patch) {
-  const patchPath = path.join(resolvedHarnessDir, ".harness", "normalize-patches.json");
-  let patches = [];
-  try {
-    patches = JSON.parse(fs.readFileSync(patchPath, "utf-8"));
-    if (!Array.isArray(patches)) patches = [];
-  } catch {
-    patches = [];
-  }
-  // 避免重复（同 pattern 不重复写入）
-  if (!patches.some((p) => p.pattern === patch.pattern)) {
-    patches.push(patch);
-    fs.mkdirSync(path.dirname(patchPath), { recursive: true });
-    fs.writeFileSync(patchPath, JSON.stringify(patches, null, 2));
-    console.log(`    [MEMORY] normalize patch saved: ${patch.pattern} → ${patch.replacement}`);
-  }
-}
 
 // --- 跨期记忆：写入 tts-known-issues.json ---
 function appendKnownIssue(issue) {
@@ -407,43 +389,6 @@ async function retranscribe(chunkId) {
 // 解析 LLM JSON 响应
 // =============================================================
 
-/**
- * 从修复前后的 text_normalized 提取精确的替换对。
- * 策略：按中文句号/逗号分段对齐，找出不同的段落，提取 before→after。
- */
-function extractDiffPairs(before, after) {
-  if (before === after) return [];
-
-  // 按标点分段
-  const splitSegs = (t) => t.split(/(?<=[。，、；！？,.])/);
-  const segsA = splitSegs(before);
-  const segsB = splitSegs(after);
-
-  const pairs = [];
-  const minLen = Math.min(segsA.length, segsB.length);
-
-  for (let i = 0; i < minLen; i++) {
-    const a = segsA[i].trim();
-    const b = segsB[i].trim();
-    if (a !== b && a.length > 0 && b.length > 0) {
-      // 进一步缩小差异范围：找最长公共前缀和后缀
-      let prefixLen = 0;
-      while (prefixLen < a.length && prefixLen < b.length && a[prefixLen] === b[prefixLen]) prefixLen++;
-      let suffixLen = 0;
-      while (suffixLen < a.length - prefixLen && suffixLen < b.length - prefixLen &&
-             a[a.length - 1 - suffixLen] === b[b.length - 1 - suffixLen]) suffixLen++;
-
-      const origPart = a.slice(prefixLen, a.length - suffixLen);
-      const fixedPart = b.slice(prefixLen, b.length - suffixLen);
-
-      if (origPart && fixedPart && origPart !== fixedPart) {
-        pairs.push({ original: origPart, fixed: fixedPart });
-      }
-    }
-  }
-
-  return pairs;
-}
 
 function parseJSON(text) {
   try {
@@ -495,7 +440,6 @@ async function main() {
 
     let passed = false;
     const previousNormalized = []; // Track text_normalized across rounds for oscillation detection
-    let lastFixChanges = []; // Track fix changes for memory writing
 
     for (let round = 1; round <= MAX_RETRY_ROUNDS; round++) {
       const transcriptPath = path.join(transcriptsDir, `${chunk.id}.json`);
@@ -544,19 +488,6 @@ async function main() {
           chunk.status = "validated";
           chunk.validate_round = round;
           fs.writeFileSync(chunksPath, JSON.stringify(chunks, null, 2));
-
-          // 跨期记忆：round > 1 表示之前有修复，将修复写入 normalize-patches
-          if (round > 1 && lastFixChanges.length > 0) {
-            for (const change of lastFixChanges) {
-              appendNormalizePatch({
-                pattern: change.original,
-                replacement: change.fixed,
-                source: "p4-auto",
-                episode: chunk.shot_id || "",
-                created: new Date().toISOString(),
-              });
-            }
-          }
 
           passCount++;
           passed = true;
@@ -626,10 +557,6 @@ async function main() {
           chunk.text_normalized = fix.text_normalized;
           chunk.previous_normalized = previousNormalized;
           chunk.status = "pending"; // 触发 P2 重做
-
-          // 记录修复映射：从修复前后的 text_normalized diff 提取精确替换对
-          // 不用 issue.fix（那是 Claude 的自然语言建议，不是替换值）
-          lastFixChanges = extractDiffPairs(oldNormalized, fix.text_normalized);
 
           console.log(`    → 修改: ${(fix.changes || []).join("; ")}`);
           console.log(
