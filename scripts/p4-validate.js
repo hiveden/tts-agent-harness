@@ -53,7 +53,7 @@ if (!chunksPath || !transcriptsDir || !audiodir || !outdir) {
 const defaultHarnessDir = path.resolve(__dirname, "..");
 const resolvedHarnessDir = harnessDir || defaultHarnessDir;
 
-// --- 配置（从 config.json 加载，回退到默认值）---
+// --- 配置（env 优先 → config.json → 默认值）---
 let CLAUDE_PROXY_URL = "https://api.anthropic.com/v1/messages";
 let CLAUDE_MODEL = "claude-sonnet-4-20250514";
 let MAX_RETRY_ROUNDS = 3;
@@ -69,6 +69,9 @@ try {
 } catch {
   // config.json 不存在或格式错误，使用默认值
 }
+// 环境变量优先覆盖
+if (process.env.CLAUDE_API_URL) CLAUDE_PROXY_URL = process.env.CLAUDE_API_URL;
+if (process.env.CLAUDE_MODEL) CLAUDE_MODEL = process.env.CLAUDE_MODEL;
 
 // --- 跨期记忆：加载已知 TTS 问题 ---
 let _knownIssues = null;
@@ -139,10 +142,11 @@ function callClaudeOnce(prompt) {
     });
 
     const url = new URL(CLAUDE_PROXY_URL);
-    const req = http.request(
+    const httpModule = url.protocol === "https:" ? require("https") : http;
+    const req = httpModule.request(
       {
         hostname: url.hostname,
-        port: url.port,
+        port: url.port || (url.protocol === "https:" ? 443 : 80),
         path: url.pathname,
         method: "POST",
         headers: {

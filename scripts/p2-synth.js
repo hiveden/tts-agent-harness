@@ -15,17 +15,23 @@ const path = require("path");
 const { execSync } = require("child_process");
 const { trace } = require("./trace");
 
-// --- 配置 ---
+// --- 配置（env 优先 → config.json → 默认值）---
+const _p2Defaults = { concurrency: 3, max_retries: 3, default_speed: 1.0, model: "s1" };
+try {
+  const _cfg = JSON.parse(require("fs").readFileSync(require("path").join(__dirname, "..", ".harness", "config.json"), "utf-8"));
+  if (_cfg.p2) Object.assign(_p2Defaults, _cfg.p2);
+} catch {}
+
 const TTS_API_URL = "https://api.fish.audio/v1/tts";
 const TTS_API_KEY = process.env.FISH_TTS_KEY;
 if (!TTS_API_KEY) {
   console.error("ERROR: FISH_TTS_KEY environment variable is required");
   process.exit(1);
 }
-const TTS_MODEL = process.env.FISH_TTS_MODEL || "s1";
+const TTS_MODEL = process.env.FISH_TTS_MODEL || _p2Defaults.model;
 const TTS_REFERENCE_ID = process.env.FISH_TTS_REFERENCE_ID || "";
-const DEFAULT_SPEED = parseFloat(process.env.TTS_SPEED || "1.0");
-const CONCURRENCY = 3;
+const DEFAULT_SPEED = parseFloat(process.env.TTS_SPEED || String(_p2Defaults.default_speed));
+const CONCURRENCY = _p2Defaults.concurrency;
 
 // --- 参数解析 ---
 const args = process.argv.slice(2);
