@@ -1,6 +1,6 @@
 {
   "p1": { "max_chars_per_chunk": 200, "max_sentences_per_chunk": 5, "min_sentences_per_chunk": 2 },
-  "p2": { "concurrency": 3, "max_retries": 3, "default_speed": 1.0, "model": "s2-pro" },
+  "p2": { "concurrency": 3, "max_retries": 3, "default_speed": 1.15, "model": "s2-pro", "temperature": 0.3, "top_p": 0.5 },
   "p3": { "model": "large-v3", "device": "cpu", "port": 5555 },
   "p4": { "max_rounds": 3, "model": "claude-sonnet-4-20250514", "proxy_url": "https://api.anthropic.com/v1/messages" },
   "p5": { "max_line_chars": 20 },

@@ -55,6 +55,9 @@ fi
 
 source "$VENV_ACTIVATE"
 
+# 离线模式：跳过 HuggingFace API 版本检查，直接用本地缓存模型
+export HF_HUB_OFFLINE=1
+
 mkdir -p "$P3_WORK_DIR"
 echo "  Starting P3 WhisperX server on port $P3_PORT..."
 python "$P3_SCRIPT" --server --port "$P3_PORT" &>"$P3_LOG" &

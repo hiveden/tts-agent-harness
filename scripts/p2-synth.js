@@ -64,8 +64,10 @@ function callTTS(text) {
   return new Promise((resolve, reject) => {
     const https = require("https");
     const url = new URL(TTS_API_URL);
-    const payload = { text };
+    const payload = { text, model: TTS_MODEL, normalize: false };
     if (TTS_REFERENCE_ID) payload.reference_id = TTS_REFERENCE_ID;
+    if (_p2Defaults.temperature != null) payload.temperature = _p2Defaults.temperature;
+    if (_p2Defaults.top_p != null) payload.top_p = _p2Defaults.top_p;
     const body = JSON.stringify(payload);
 
     const req = https.request(
@@ -77,7 +79,6 @@ function callTTS(text) {
         headers: {
           "Content-Type": "application/json",
           "Authorization": `Bearer ${TTS_API_KEY}`,
-          "model": TTS_MODEL,
           "Content-Length": Buffer.byteLength(body),
         },
         timeout: 120000,

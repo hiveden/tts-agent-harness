@@ -137,7 +137,12 @@ function main() {
       // 用 WhisperX 的 segment 时间戳，文本用原始文稿
       // 策略：WhisperX segments 提供时间边界，原始文稿按行分配到这些时间窗口
       const segments = transcript.segments || [];
-      const originalLines = splitSubtitleLines(chunk.subtitle_text || chunk.text);
+      // 字幕文本：strip TTS 控制标记（[break]/[breath]/[long break]/phoneme）
+      const subtitleSource = (chunk.subtitle_text || chunk.text)
+        .replace(/\[(?:break|breath|long[ -]break)\]/g, "")
+        .replace(/<\|phoneme_start\|>.*?<\|phoneme_end\|>/g, "")
+        .replace(/\s+/g, " ").trim();
+      const originalLines = splitSubtitleLines(subtitleSource);
 
       if (segments.length === 0) {
         console.error(`  [WARN] ${chunk.id}: no segments in transcript`);

@@ -73,41 +73,6 @@ try {
 if (process.env.CLAUDE_API_URL) CLAUDE_PROXY_URL = process.env.CLAUDE_API_URL;
 if (process.env.CLAUDE_MODEL) CLAUDE_MODEL = process.env.CLAUDE_MODEL;
 
-// --- 跨期记忆：加载已知 TTS 问题 ---
-let _knownIssues = null;
-
-function loadKnownIssues() {
-  if (_knownIssues !== null) return _knownIssues;
-  const issuesPath = path.join(resolvedHarnessDir, ".harness", "tts-known-issues.json");
-  try {
-    _knownIssues = JSON.parse(fs.readFileSync(issuesPath, "utf-8"));
-    if (!Array.isArray(_knownIssues)) _knownIssues = [];
-  } catch {
-    _knownIssues = [];
-  }
-  return _knownIssues;
-}
-
-
-// --- 跨期记忆：写入 tts-known-issues.json ---
-function appendKnownIssue(issue) {
-  const issuesPath = path.join(resolvedHarnessDir, ".harness", "tts-known-issues.json");
-  let issues = [];
-  try {
-    issues = JSON.parse(fs.readFileSync(issuesPath, "utf-8"));
-    if (!Array.isArray(issues)) issues = [];
-  } catch {
-    issues = [];
-  }
-  // 去重：相同 pattern 不重复写入
-  if (!issues.some((i) => i.pattern === issue.pattern)) {
-    issues.push(issue);
-    fs.mkdirSync(path.dirname(issuesPath), { recursive: true });
-    fs.writeFileSync(issuesPath, JSON.stringify(issues, null, 2));
-    console.log(`    [MEMORY] known issue saved: ${issue.pattern}`);
-  }
-}
-
 // 脚本路径（用于调用 P2/P3 重做）
 const SCRIPTS_DIR = path.dirname(__filename);
 
@@ -238,11 +203,6 @@ ${transcribed}
 - 标点差异
 - 轻微停顿差异
 - 语气词增减（嗯、啊）
-${(() => {
-  const issues = loadKnownIssues();
-  if (issues.length === 0) return "";
-  return "\n以下是已知的 TTS 引擎限制，不算错误：\n" + issues.map((i) => `- ${i.pattern}`).join("\n");
-})()}
 
 ## 输出格式
 
@@ -588,34 +548,6 @@ async function main() {
       fs.writeFileSync(chunksPath, JSON.stringify(chunks, null, 2));
       needsHuman.push(chunk);
       failCount++;
-
-      // 跨期记忆：将无法自动修复的问题记录到 tts-known-issues.json
-      // 读取最后一轮的校验结果来提取 high issues
-      try {
-        const lastResultFile = fs
-          .readdirSync(outdir)
-          .filter((f) => f.startsWith(chunk.id) && f.endsWith(".json"))
-          .sort()
-          .pop();
-        if (lastResultFile) {
-          const lastResult = JSON.parse(
-            fs.readFileSync(path.join(outdir, lastResultFile), "utf-8")
-          );
-          const highIssues = (lastResult.issues || []).filter(
-            (i) => i.severity === "high"
-          );
-          for (const issue of highIssues) {
-            appendKnownIssue({
-              pattern: `${issue.original} → ${issue.transcribed}`,
-              type: "tts_engine_limitation",
-              episode: chunk.shot_id || "",
-              created: new Date().toISOString(),
-            });
-          }
-        }
-      } catch {
-        // 读取失败不影响主流程
-      }
     }
   }
 

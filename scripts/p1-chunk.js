@@ -57,28 +57,8 @@ try {
 // =============================================================
 
 function normalize(text) {
-  let t = text;
-
-  // 删除导演标注（保留 S2-Pro 控制标记 [break]、[breath]、[long break]）
-  t = t.replace(/\[(?!break|breath|long[ -]break)[^\]]*\]/g, "");
-  t = t.replace(/（停顿.*?）/g, "");
-  t = t.replace(/\(停顿.*?\)/g, "");
-
-  // 特殊符号替换
-  // 破折号 → 逗号（防止 TTS 卡带声）
-  t = t.replace(/——/g, "，");
-  t = t.replace(/—/g, "，");
-  // 文件后缀替换为中文可读形式（带前置空格，避免后续断句规则误匹配）
-  t = t.replace(/\.md\b/g, " 文档");
-  t = t.replace(/\.jsonl\b/g, " 文件");
-  t = t.replace(/\.json\b/g, " 文件");
-  // 英文连字符 → 空格（yoyo-evolve → yoyo evolve, Natural-Language → Natural Language）
-  t = t.replace(/([a-zA-Z])-([a-zA-Z\u4e00-\u9fff])/g, "$1 $2");
-  // 数字范围 dash → 到（排除日期格式 YYYY-MM-DD）
-  t = t.replace(/(?<!\d)(\d{1,3})\s*-\s*(\d{1,5})(?![/-]\d)/g, "$1到$2"); // 28-35 → 28到35
-  t = t.replace(/(\d+)%/g, "百分之$1"); // 53% → 百分之53
-
-  return t.replace(/\s+/g, " ").trim();
+  // S2-Pro 场景：P1 只做切分，不做内容修改。脚本原文直接传 TTS。
+  return text.replace(/\s+/g, " ").trim();
 }
 
 // =============================================================

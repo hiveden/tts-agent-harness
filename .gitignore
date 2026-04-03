@@ -4,6 +4,7 @@ node_modules/
 *.wav
 *.mp3
 .env
+test/ab-param-test/output/
 __pycache__/
 *.pyc
 .DS_Store
