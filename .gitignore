@@ -10,6 +10,7 @@ node_modules/
 test/ab-param-test/output/
 __pycache__/
 *.pyc
+*.egg-info/
 .DS_Store
 .idea/
 .harness/normalize-patches.json

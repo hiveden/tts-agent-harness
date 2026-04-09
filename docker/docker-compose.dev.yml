@@ -1,0 +1,106 @@
+#
+# docker-compose.dev.yml — TTS Agent Harness dev stack
+#
+# Scope: W0 infra only. Brings up Postgres / MinIO / Prefect server.
+# FastAPI, Prefect worker, whisperx-svc, next-ui are added in later waves.
+#
+# Ports (see docs/setup.md §Ports):
+#   5432  postgres
+#   9000  minio s3 api
+#   9001  minio console
+#   4200  prefect ui + api
+#
+
+name: tts-harness
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: tts-harness-postgres
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: ${POSTGRES_USER:-harness}
+      POSTGRES_PASSWORD: ${POSTGRES_PASSWORD:-harness}
+      POSTGRES_DB: ${POSTGRES_DB:-harness}
+    ports:
+      - "${POSTGRES_PORT:-5432}:5432"
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./postgres-init:/docker-entrypoint-initdb.d:ro
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U ${POSTGRES_USER:-harness} -d ${POSTGRES_DB:-harness}"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  minio:
+    image: minio/minio:latest
+    container_name: tts-harness-minio
+    restart: unless-stopped
+    command: server /data --console-address ":9001"
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+    ports:
+      - "${MINIO_API_PORT:-9000}:9000"
+      - "${MINIO_CONSOLE_PORT:-9001}:9001"
+    volumes:
+      - minio_data:/data
+    healthcheck:
+      test: ["CMD", "curl", "-f", "http://localhost:9000/minio/health/live"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+  # One-shot init container: create the tts-harness bucket if missing.
+  # Idempotent: mc mb --ignore-existing does not fail on re-run.
+  minio-init:
+    image: minio/mc:latest
+    container_name: tts-harness-minio-init
+    depends_on:
+      minio:
+        condition: service_healthy
+    environment:
+      MINIO_ROOT_USER: ${MINIO_ROOT_USER:-minioadmin}
+      MINIO_ROOT_PASSWORD: ${MINIO_ROOT_PASSWORD:-minioadmin}
+      MINIO_BUCKET: ${MINIO_BUCKET:-tts-harness}
+    entrypoint: >
+      /bin/sh -c "
+      set -e;
+      mc alias set local http://minio:9000 $$MINIO_ROOT_USER $$MINIO_ROOT_PASSWORD;
+      mc mb --ignore-existing local/$$MINIO_BUCKET;
+      echo 'bucket ready:' $$MINIO_BUCKET;
+      "
+    restart: "no"
+
+  prefect-server:
+    image: prefecthq/prefect:3-latest
+    container_name: tts-harness-prefect-server
+    restart: unless-stopped
+    command: prefect server start --host 0.0.0.0
+    environment:
+      PREFECT_HOME: /data
+      PREFECT_SERVER_API_HOST: 0.0.0.0
+      PREFECT_API_DATABASE_CONNECTION_URL: ${PREFECT_API_DATABASE_CONNECTION_URL:-postgresql+asyncpg://harness:harness@postgres:5432/prefect}
+      PREFECT_UI_URL: ${PREFECT_UI_URL:-http://localhost:4200}
+    ports:
+      - "${PREFECT_PORT:-4200}:4200"
+    volumes:
+      - prefect_data:/data
+    depends_on:
+      postgres:
+        condition: service_healthy
+    healthcheck:
+      test: ["CMD-SHELL", "python -c 'import urllib.request,sys; urllib.request.urlopen(\"http://localhost:4200/api/health\"); sys.exit(0)' || exit 1"]
+      interval: 10s
+      timeout: 5s
+      retries: 10
+      start_period: 30s
+
+volumes:
+  postgres_data:
+    name: tts-harness-postgres-data
+  minio_data:
+    name: tts-harness-minio-data
+  prefect_data:
+    name: tts-harness-prefect-data

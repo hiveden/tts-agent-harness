@@ -1,0 +1,39 @@
+[project]
+name = "tts-harness-server"
+version = "0.1.0"
+description = "TTS Agent Harness server (FastAPI + Prefect + SQLAlchemy)"
+requires-python = ">=3.12"
+readme = "README.md"
+
+# Dependencies are frozen by ADR-002 §4.1: A1-Infra is not allowed to add
+# anything not listed here. Later agents may extend this list via the ADR
+# change process, not by edit.
+dependencies = [
+  "sqlalchemy>=2.0",
+  "alembic>=1.13",
+  "asyncpg>=0.29",
+  "psycopg2-binary>=2.9",
+  "pydantic>=2",
+  "minio>=7.2",
+  "prefect>=3",
+  "fastapi>=0.115",
+  "uvicorn[standard]>=0.30",
+]
+
+[project.optional-dependencies]
+dev = [
+  "pytest>=8",
+  "pytest-asyncio>=0.23",
+]
+
+[build-system]
+requires = ["setuptools>=68", "wheel"]
+build-backend = "setuptools.build_meta"
+
+[tool.setuptools.packages.find]
+where = ["."]
+include = ["core*", "api*", "flows*", "migrations*"]
+
+[tool.pytest.ini_options]
+asyncio_mode = "auto"
+testpaths = ["tests"]
