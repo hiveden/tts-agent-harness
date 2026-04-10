@@ -6,9 +6,7 @@ import type { Episode, EpisodeStatus } from "@/lib/types";
 interface Props {
   episode: Episode;
   running: boolean;
-  currentStage: string | null;
   onRun: () => void;
-  onExport: () => void;
 }
 
 const STATUS_BADGE: Record<
@@ -19,13 +17,13 @@ const STATUS_BADGE: Record<
     bg: "bg-emerald-50",
     fg: "text-emerald-700",
     br: "border-emerald-200",
-    label: "✓ done",
+    label: "done",
   },
   running: {
     bg: "bg-blue-50",
     fg: "text-blue-700",
     br: "border-blue-200",
-    label: "⏵ running",
+    label: "running",
   },
   ready: {
     bg: "bg-neutral-50",
@@ -37,7 +35,7 @@ const STATUS_BADGE: Record<
     bg: "bg-red-50",
     fg: "text-red-700",
     br: "border-red-200",
-    label: "✗ failed",
+    label: "failed",
   },
   empty: {
     bg: "bg-neutral-50",
@@ -61,32 +59,32 @@ function getRunConfirm(status: EpisodeStatus): ConfirmConfig {
     case "empty":
       return {
         variant: "blue",
-        label: "▶ Generate",
-        title: "首次生成",
-        body: "调 Fish TTS 合成全部 chunks,再走 P3 转写 + P5/P6 拼接。整集大约 5-10 分钟。",
-        action: "开始生成",
+        label: "Generate",
+        title: "Start generation",
+        body: "This will run the full TTS pipeline (P1-P6). It may take several minutes.",
+        action: "Start",
       };
     case "failed":
       return {
         variant: "amber",
-        label: "↻ Retry",
-        title: "重试上次失败的 pipeline",
-        body: "上次 pipeline 退出非 0。重试会从 P1 重新开始,已生成的 chunks 会按 status 跳过。建议先查 run.log。",
-        action: "重试",
+        label: "Retry",
+        title: "Retry failed pipeline",
+        body: "The previous pipeline run failed. Retry will restart from the beginning, skipping already-completed chunks.",
+        action: "Retry",
       };
     case "done":
       return {
         variant: "red",
-        label: "⟲ Re-run",
-        title: "重跑已完成的 episode",
-        body: "整集已 done。重跑会重新合成所有 chunks(Fish TTS 非确定性,音质可能波动)。如果只是想改某几个 chunk,直接 ✎ 编辑后 Apply All 即可。确定要全集重跑?",
-        action: "我确定,全集重跑",
+        label: "Re-run",
+        title: "Re-run completed episode",
+        body: "This episode is already done. Re-running will re-synthesize all chunks. To fix specific chunks, use the edit workflow instead.",
+        action: "Confirm re-run",
       };
     case "running":
     default:
       return {
         variant: "blue",
-        label: "▶ Run",
+        label: "Run",
         title: "",
         body: "",
         action: "",
@@ -97,28 +95,15 @@ function getRunConfirm(status: EpisodeStatus): ConfirmConfig {
 export function EpisodeHeader({
   episode,
   running,
-  currentStage,
   onRun,
-  onExport,
 }: Props) {
   const badge = STATUS_BADGE[episode.status] ?? STATUS_BADGE.ready;
-  const scriptMissing = Boolean(episode.metadata?.scriptMissing);
-  const runDisabled = running || scriptMissing;
-  const exportDisabled = episode.status !== "done";
+  const runDisabled = running;
 
-  const confirm = scriptMissing
-    ? {
-        variant: "red" as const,
-        label: "▶ Run",
-        title: "脚本缺失,无法运行",
-        body: "这个 episode 在 .work/ 下有运行时数据,但 episodes/<id>.json 不存在(orphan)。要重新生成,需要先把 script.json 放回 episodes/ 目录。",
-        action: "知道了",
-      }
-    : getRunConfirm(episode.status);
+  const confirm = getRunConfirm(episode.status);
   const [popoverOpen, setPopoverOpen] = useState(false);
   const popoverRef = useRef<HTMLDivElement>(null);
 
-  // 点外部关闭气泡
   useEffect(() => {
     if (!popoverOpen) return;
     const onDocClick = (e: MouseEvent) => {
@@ -133,7 +118,6 @@ export function EpisodeHeader({
     return () => document.removeEventListener("mousedown", onDocClick);
   }, [popoverOpen]);
 
-  // ESC 关闭
   useEffect(() => {
     if (!popoverOpen) return;
     const onKey = (e: KeyboardEvent) => {
@@ -174,30 +158,24 @@ export function EpisodeHeader({
     },
   }[confirm.variant];
 
+  // Compute total duration from selected takes
+  const totalDurationS = episode.chunks.reduce((sum, c) => {
+    const selectedTake = c.takes.find((t) => t.id === c.selectedTakeId);
+    return sum + (selectedTake?.durationS ?? 0);
+  }, 0);
+
   return (
     <div className="px-6 py-3 border-b border-neutral-200 bg-white shrink-0">
       <div className="flex items-center gap-3 mb-2">
-        <h2 className="text-lg font-semibold">{episode.id}</h2>
+        <h2 className="text-lg font-semibold">{episode.title}</h2>
+        <span className="text-xs text-neutral-400 font-mono">{episode.id}</span>
         <span
           className={`text-xs px-2 py-0.5 rounded-full border ${badge.bg} ${badge.fg} ${badge.br}`}
         >
           {badge.label}
         </span>
-        {scriptMissing ? (
-          <span
-            className="text-xs px-2 py-0.5 rounded-full border bg-red-50 text-red-700 border-red-200"
-            title="episodes/<id>.json 不存在,无法重跑 pipeline"
-          >
-            ⚠ orphan
-          </span>
-        ) : null}
-        {currentStage ? (
-          <span className="text-xs text-neutral-500 font-mono">
-            {currentStage}
-          </span>
-        ) : null}
         <span className="ml-auto text-[11px] text-neutral-400 font-mono">
-          {episode.chunks.length} chunks · {episode.totalDurationS.toFixed(1)}s
+          {episode.chunks.length} chunks · {totalDurationS.toFixed(1)}s
         </span>
       </div>
       <div className="flex gap-2">
@@ -220,7 +198,7 @@ export function EpisodeHeader({
               <div className="p-3">
                 <div className="flex items-start gap-2 mb-2">
                   <span className={`text-base ${variantClasses.icon}`}>
-                    {confirm.variant === "red" ? "⚠" : "ⓘ"}
+                    {confirm.variant === "red" ? "!" : "i"}
                   </span>
                   <div className="flex-1 min-w-0">
                     <div className="text-sm font-semibold text-neutral-900">
@@ -237,7 +215,7 @@ export function EpisodeHeader({
                     onClick={() => setPopoverOpen(false)}
                     className="px-2.5 py-1 text-xs text-neutral-600 hover:bg-white/60 rounded"
                   >
-                    取消
+                    Cancel
                   </button>
                   <button
                     type="button"
@@ -254,16 +232,6 @@ export function EpisodeHeader({
             </div>
           )}
         </div>
-        <button
-          type="button"
-          onClick={onExport}
-          disabled={exportDisabled}
-          className={`px-3 py-1.5 text-sm bg-white border border-neutral-300 rounded hover:bg-neutral-50 ${
-            exportDisabled ? "opacity-50 cursor-not-allowed" : ""
-          }`}
-        >
-          ⤓ Export
-        </button>
       </div>
     </div>
   );

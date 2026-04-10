@@ -8,7 +8,7 @@ export async function POST(
 ) {
   try {
     const { id } = await params;
-    const { runner } = getServices();
+    const { chunks } = getServices();
     const body = await request.json();
     const edits: EditBatch = (body?.edits ?? body) as EditBatch;
     if (!edits || typeof edits !== "object") {
@@ -17,8 +17,8 @@ export async function POST(
         { status: 400, headers: { "content-type": "application/json" } },
       );
     }
-    const result = await runner.applyEdits(id, edits);
-    return Response.json(result);
+    await chunks.applyEdits(id, edits);
+    return Response.json({ updated: Object.keys(edits).length });
   } catch (e) {
     return handleError(e);
   }

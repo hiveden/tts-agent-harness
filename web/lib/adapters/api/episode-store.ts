@@ -16,31 +16,28 @@ export class ApiEpisodeStore implements EpisodeStore {
 
   async get(id: EpisodeId): Promise<Episode | null> {
     try {
-      const raw = await apiGet<RawEpisodeDetail>(`/episodes/${encodeURIComponent(id)}`);
+      const raw = await apiGet<RawEpisodeDetail>(
+        `/episodes/${encodeURIComponent(id)}`,
+      );
       return mapEpisodeDetail(raw);
     } catch (err: unknown) {
-      if (err && typeof err === "object" && "status" in err && (err as { status: number }).status === 404) {
+      if (
+        err &&
+        typeof err === "object" &&
+        "status" in err &&
+        (err as { status: number }).status === 404
+      ) {
         return null;
       }
       throw err;
     }
   }
 
-  async create(id: EpisodeId, scriptJson: unknown): Promise<Episode> {
+  async create(id: EpisodeId, scriptFile: File): Promise<Episode> {
     const fd = new FormData();
     fd.append("id", id);
-
-    // scriptJson can be a File (from browser) or plain object
-    if (scriptJson instanceof File) {
-      fd.append("script", scriptJson);
-    } else {
-      const blob = new Blob([JSON.stringify(scriptJson)], {
-        type: "application/json",
-      });
-      fd.append("script", blob, "script.json");
-    }
-
-    const raw = await apiPostForm<RawEpisodeDetail>(`/episodes`, fd);
+    fd.append("script", scriptFile);
+    const raw = await apiPostForm<RawEpisodeDetail>("/episodes", fd);
     return mapEpisodeDetail(raw);
   }
 

@@ -1,5 +1,6 @@
 import { getServices } from "@/lib/factory";
 import { handleError } from "../../../../../_http";
+import type { StageName } from "@/lib/types";
 
 export async function POST(
   request: Request,
@@ -8,26 +9,15 @@ export async function POST(
   try {
     const { id, cid } = await params;
     const { runner } = getServices();
-    const url = new URL(request.url);
-    const qCount = url.searchParams.get("count");
     let body: Record<string, unknown> = {};
     try {
       body = await request.json();
-    } catch {}
-    const count = Number(qCount ?? body?.count ?? 1);
-    if (!Number.isFinite(count) || count < 1 || count > 16) {
-      return new Response(
-        JSON.stringify({
-          error: "invalid_input",
-          message: "count must be 1..16",
-        }),
-        { status: 400, headers: { "content-type": "application/json" } },
-      );
+    } catch {
+      // no body
     }
-    const result = await runner.retryChunk(id, cid, {
-      count,
-      params: (body?.params as Record<string, unknown>) ?? undefined,
-    });
+    const fromStage = (body?.from_stage as StageName) ?? "p2";
+    const cascade = body?.cascade !== false;
+    const result = await runner.retry(id, cid, fromStage, cascade);
     return Response.json(result);
   } catch (e) {
     return handleError(e);

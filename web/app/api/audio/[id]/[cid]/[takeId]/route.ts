@@ -1,6 +1,3 @@
-import { createReadStream, statSync } from "fs";
-import { Readable } from "stream";
-import { getServices } from "@/lib/factory";
 import { handleError } from "../../../../_http";
 
 export async function GET(
@@ -12,23 +9,11 @@ export async function GET(
   },
 ) {
   try {
-    const { id, cid, takeId } = await params;
-    const { audio } = getServices();
-    // special token "current" means "use selected take"
-    const resolvedTake = takeId === "current" ? undefined : takeId;
-    const filePath = await audio.getTakeFile(id, cid, resolvedTake);
-    const stat = statSync(filePath);
-    const stream = Readable.toWeb(
-      createReadStream(filePath),
-    ) as unknown as ReadableStream<Uint8Array>;
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "audio/wav",
-        "Content-Length": String(stat.size),
-        "Accept-Ranges": "bytes",
-        "Cache-Control": "no-store",
-      },
-    });
+    await params; // consume
+    return new Response(
+      JSON.stringify({ error: "not_implemented", message: "audio served from MinIO via FastAPI" }),
+      { status: 501, headers: { "content-type": "application/json" } },
+    );
   } catch (e) {
     return handleError(e);
   }

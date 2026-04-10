@@ -7,7 +7,6 @@ import {
   useEpisode,
   runEpisode,
   applyEdits as apiApplyEdits,
-  exportEpisode,
   createEpisode,
 } from "@/lib/hooks";
 import { EpisodeSidebar } from "@/components/EpisodeSidebar";
@@ -16,7 +15,6 @@ import { EditBanner } from "@/components/EditBanner";
 import { ChunksTable } from "@/components/ChunksTable";
 import { LogViewer } from "@/components/LogViewer";
 import { NewEpisodeDialog } from "@/components/NewEpisodeDialog";
-import { ScriptPreview } from "@/components/ScriptPreview";
 import { StageProgress } from "@/components/StageProgress";
 
 export default function Page() {
@@ -26,8 +24,8 @@ export default function Page() {
   const [playingChunkId, setPlayingChunkId] = useState<string | null>(null);
   const [newEpOpen, setNewEpOpen] = useState(false);
 
-  const { data: epList, mutate: mutateList } = useEpisodes();
-  const { data: epDetail, mutate: mutateDetail } = useEpisode(selectedId);
+  const { data: episodes, mutate: mutateList } = useEpisodes();
+  const { data: episode, mutate: mutateDetail } = useEpisode(selectedId);
 
   const dirtyCount = useMemo(() => {
     let tts = 0;
@@ -57,24 +55,6 @@ export default function Page() {
     }
   };
 
-  const handleExport = async () => {
-    if (!selectedId) return;
-    const dir =
-      typeof window !== "undefined"
-        ? window.prompt(
-            "导出到目录:",
-            "/Users/xuelin/projects/remotion/public/tts",
-          )
-        : null;
-    if (!dir) return;
-    try {
-      await exportEpisode(selectedId, dir);
-      alert(`已导出到 ${dir}`);
-    } catch (e) {
-      alert(`Export failed: ${(e as Error).message}`);
-    }
-  };
-
   const handleApply = async () => {
     if (!selectedId) return;
     if (Object.keys(edits).length === 0) return;
@@ -99,7 +79,6 @@ export default function Page() {
       return next;
     });
     setEditing(null);
-    // 如果正在播这个 chunk 就停掉
     if (playingChunkId === cid) setPlayingChunkId(null);
   };
 
@@ -113,6 +92,8 @@ export default function Page() {
     }
   };
 
+  const running = episode?.status === "running";
+
   return (
     <div className="h-screen flex flex-col bg-neutral-50 text-neutral-900 overflow-hidden">
       <header className="h-12 border-b border-neutral-200 bg-white flex items-center px-4 shrink-0">
@@ -121,7 +102,7 @@ export default function Page() {
             T
           </div>
           <h1 className="font-semibold text-sm">TTS Harness</h1>
-          <span className="text-xs text-neutral-400 ml-1">v0.1</span>
+          <span className="text-xs text-neutral-400 ml-1">v2</span>
         </div>
         <div className="ml-auto text-xs text-neutral-500 font-mono">
           localhost:3010
@@ -130,30 +111,24 @@ export default function Page() {
 
       <div className="flex-1 flex overflow-hidden">
         <EpisodeSidebar
-          episodes={epList?.episodes ?? []}
+          episodes={episodes ?? []}
           selectedId={selectedId}
           onSelect={handleSelect}
           onNewEpisode={() => setNewEpOpen(true)}
         />
         <main className="flex-1 flex flex-col overflow-hidden">
-          {epDetail?.episode ? (
+          {episode ? (
             <>
               <EpisodeHeader
-                episode={epDetail.episode}
-                running={epDetail.running}
-                currentStage={epDetail.currentStage}
+                episode={episode}
+                running={running}
                 onRun={handleRun}
-                onExport={handleExport}
               />
               <StageProgress
-                status={epDetail.episode.status}
-                running={epDetail.running}
-                currentStage={epDetail.currentStage}
-                totalChunks={epDetail.episode.chunks.length}
-                lastLogLine={
-                  // 倒序找最后一个非空行
-                  [...epDetail.logTail].reverse().find((l) => l && l.trim()) ?? undefined
-                }
+                status={episode.status}
+                running={running}
+                currentStage={null}
+                totalChunks={episode.chunks.length}
               />
               <EditBanner
                 ttsCount={dirtyCount.tts}
@@ -162,27 +137,10 @@ export default function Page() {
                 onDiscard={() => setEdits({})}
               />
               <div className="flex-1 overflow-y-auto bg-white">
-                {epDetail.episode.chunks.length === 0 &&
-                epDetail.episode.scriptSegments &&
-                epDetail.episode.scriptSegments.length > 0 ? (
-                  <>
-                    <div className="px-6 py-2 sticky top-0 bg-white border-b border-neutral-100 flex items-center z-10">
-                      <h3 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">
-                        Script Preview
-                      </h3>
-                      <span className="ml-2 text-[11px] text-neutral-400">
-                        {epDetail.episode.scriptSegments.length} segments
-                      </span>
-                      <span className="ml-auto text-[11px] text-neutral-400">
-                        生成后会被 P1 切成 chunks
-                      </span>
-                    </div>
-                    <ScriptPreview
-                      title={epDetail.episode.scriptTitle}
-                      description={epDetail.episode.scriptDescription}
-                      segments={epDetail.episode.scriptSegments}
-                    />
-                  </>
+                {episode.chunks.length === 0 ? (
+                  <div className="px-6 py-12 text-center text-sm text-neutral-400">
+                    还没有 chunks。点 Generate 开始。
+                  </div>
                 ) : (
                   <>
                     <div className="px-6 py-2 sticky top-0 bg-white border-b border-neutral-100 flex items-center z-10">
@@ -190,15 +148,12 @@ export default function Page() {
                         Chunks
                       </h3>
                       <span className="ml-2 text-[11px] text-neutral-400">
-                        {epDetail.episode.chunks.length} 项
-                      </span>
-                      <span className="ml-auto text-[11px] text-neutral-400">
-                        点击 ✎ → 展开编辑
+                        {episode.chunks.length} items
                       </span>
                     </div>
                     <ChunksTable
-                      episodeId={epDetail.episode.id}
-                      chunks={epDetail.episode.chunks}
+                      episodeId={episode.id}
+                      chunks={episode.chunks}
                       edits={edits}
                       editing={editing}
                       playingChunkId={playingChunkId}
@@ -214,11 +169,11 @@ export default function Page() {
                   </>
                 )}
               </div>
-              <LogViewer log={epDetail.logTail} />
+              <LogViewer log={[]} />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-sm text-neutral-400">
-              请从左侧选择一个 episode
+              Select an episode from the sidebar
             </div>
           )}
         </main>
