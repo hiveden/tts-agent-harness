@@ -42,4 +42,5 @@ asyncio_mode = "auto"
 testpaths = ["tests"]
 markers = [
   "live: tests that hit real external services (FISH_TTS_KEY required); excluded by default",
+  "e2e: end-to-end integration tests against dev-stack Postgres + MinIO",
 ]
