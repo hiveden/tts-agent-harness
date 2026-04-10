@@ -130,17 +130,22 @@ def _new_take_id() -> str:
 def _wav_duration_seconds(data: bytes) -> float:
     """Best-effort WAV duration via stdlib ``wave`` module.
 
-    Returns ``0.0`` if the payload is not a WAV we can parse (for example
-    if Fish has been configured to return mp3). P2 is WAV-only today, but
-    we don't want a parse failure to abort a successful synth.
+    Fish TTS streaming WAV may have incorrect nframes in the header
+    (e.g. 2^31 - 128), so we compute duration from actual data size
+    instead of trusting getnframes().
     """
     try:
         with wave.open(io.BytesIO(data), "rb") as wf:
-            frames = wf.getnframes()
             rate = wf.getframerate()
-            if rate <= 0:
+            channels = wf.getnchannels()
+            sampwidth = wf.getsampwidth()
+            if rate <= 0 or channels <= 0 or sampwidth <= 0:
                 return 0.0
-            return frames / float(rate)
+            # Calculate from actual data size, not nframes (which may be wrong)
+            header_size = 44  # standard WAV header
+            audio_bytes = max(0, len(data) - header_size)
+            bytes_per_sample = channels * sampwidth
+            return audio_bytes / (rate * bytes_per_sample)
     except wave.Error:
         return 0.0
     except Exception:
