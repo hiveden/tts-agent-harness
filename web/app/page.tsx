@@ -2,11 +2,13 @@
 
 import { useState, useMemo } from "react";
 import type { ChunkEdit, EditBatch } from "@/lib/types";
+import type { StageName } from "@/lib/types";
 import {
   useEpisodes,
   useEpisode,
   useEpisodeLogs,
   runEpisode,
+  retryChunk,
   applyEdits as apiApplyEdits,
   createEpisode,
 } from "@/lib/hooks";
@@ -18,6 +20,7 @@ import { LogViewer } from "@/components/LogViewer";
 import { NewEpisodeDialog } from "@/components/NewEpisodeDialog";
 import { StageProgress } from "@/components/StageProgress";
 import { EpisodeStageBar } from "@/components/EpisodeStageBar";
+import { TtsConfigBar } from "@/components/TtsConfigBar";
 
 export default function Page() {
   const [selectedId, setSelectedId] = useState<string | null>("ch04");
@@ -129,6 +132,11 @@ export default function Page() {
                 onRun={handleRun}
                 failedCount={failedCount}
               />
+              <TtsConfigBar
+                episodeId={episode.id}
+                config={episode.config}
+                onConfigSaved={() => mutateDetail()}
+              />
               <StageProgress
                 status={episode.status}
                 running={running}
@@ -136,7 +144,24 @@ export default function Page() {
                 totalChunks={episode.chunks.length}
               />
               {episode.chunks.length > 0 && (
-                <EpisodeStageBar chunks={episode.chunks} />
+                <EpisodeStageBar
+                  chunks={episode.chunks}
+                  onStageRetry={async (stage: StageName) => {
+                    const failed = episode.chunks.filter(
+                      (c) => c.stageRuns.find((sr) => sr.stage === stage)?.status === "failed"
+                    );
+                    if (failed.length === 0) return;
+                    if (!confirm(`重跑 ${failed.length} 个失败的 ${stage.toUpperCase()} chunk？`)) return;
+                    try {
+                      for (const c of failed) {
+                        await retryChunk(episode.id, c.id, stage, true);
+                      }
+                      await mutateDetail();
+                    } catch (e) {
+                      alert(`Retry failed: ${(e as Error).message}`);
+                    }
+                  }}
+                />
               )}
               <EditBanner
                 ttsCount={dirtyCount.tts}

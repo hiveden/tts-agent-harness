@@ -86,14 +86,16 @@ async def _run_synthesize(
     """Mode: synthesize — P2→P3→P5→P6, skipping chunks with selected_take (D-05)."""
     from server.flows.worker_bootstrap import bootstrap, _session_factory
 
-    # Get all chunks for this episode
     if _session_factory is None:
         bootstrap()
 
-    from server.core.repositories import ChunkRepo
+    from server.core.repositories import ChunkRepo, EpisodeRepo
     async with _session_factory() as session:  # type: ignore[misc]
         chunk_repo = ChunkRepo(session)
+        ep_repo = EpisodeRepo(session)
         all_chunks = await chunk_repo.list_by_episode(episode_id)
+        ep = await ep_repo.get(episode_id)
+        tts_config = (ep.config if ep else None) or {}
 
     # Filter to requested chunk_ids if provided
     if chunk_ids is not None:
@@ -109,11 +111,12 @@ async def _run_synthesize(
     if skip_p2:
         log.info("D-05: skipping P2 for %d chunks (have selected_take)", len(skip_p2))
 
-    # P2: only for chunks without take
+    # P2: only for chunks without take; pass episode.config as TTS params
     if need_p2:
-        p2_futures = p2_synth.map(need_p2)
+        p2_params = tts_config if tts_config else None
+        p2_futures = p2_synth.map(need_p2, [p2_params] * len(need_p2))
         [await f.result() for f in p2_futures]
-        log.info("P2 complete: %d synthesized, %d skipped", len(need_p2), len(skip_p2))
+        log.info("P2 complete: %d synthesized, %d skipped, config=%s", len(need_p2), len(skip_p2), bool(tts_config))
     else:
         log.info("P2 skipped entirely (all chunks have takes)")
 
@@ -151,10 +154,13 @@ async def _run_retry_failed(
     if _session_factory is None:
         bootstrap()
 
-    from server.core.repositories import ChunkRepo
+    from server.core.repositories import ChunkRepo, EpisodeRepo
     async with _session_factory() as session:  # type: ignore[misc]
         chunk_repo = ChunkRepo(session)
         all_chunks = await chunk_repo.list_by_episode(episode_id)
+        ep_repo = EpisodeRepo(session)
+        ep = await ep_repo.get(episode_id)
+        tts_config = (ep.config if ep else None) or {}
 
     failed = [c for c in all_chunks if c.status == "failed"]
     if not failed:
@@ -164,8 +170,9 @@ async def _run_retry_failed(
     failed_ids = [c.id for c in failed]
     log.info("Retrying %d failed chunks", len(failed_ids))
 
-    # Re-run P2→P3→P5 for failed chunks
-    p2_futures = p2_synth.map(failed_ids)
+    # Re-run P2→P3→P5 for failed chunks, using episode.config
+    p2_params = tts_config if tts_config else None
+    p2_futures = p2_synth.map(failed_ids, [p2_params] * len(failed_ids))
     [await f.result() for f in p2_futures]
 
     p3_futures = p3_transcribe.map(failed_ids, [language] * len(failed_ids))
@@ -188,15 +195,26 @@ async def _run_regenerate(
     shot_gap_ms: int,
 ) -> dict[str, Any]:
     """Mode: regenerate — Clear everything, re-run P1→P2→P3→P5→P6."""
-    # P1 already clears chunks (DELETE + bulk_insert), so just run full pipeline
-    from server.flows.worker_bootstrap import get_p1_context
+    from server.flows.worker_bootstrap import get_p1_context, bootstrap, _session_factory
 
+    if _session_factory is None:
+        bootstrap()
+
+    # Read episode config for P2 params
+    from server.core.repositories import EpisodeRepo
+    async with _session_factory() as session:  # type: ignore[misc]
+        ep_repo = EpisodeRepo(session)
+        ep = await ep_repo.get(episode_id)
+        tts_config = (ep.config if ep else None) or {}
+
+    # P1 clears chunks (DELETE + bulk_insert)
     ctx = get_p1_context()
     p1_result = await p1_chunk(episode_id, ctx=ctx)
     chunk_ids = [c.id for c in p1_result.chunks]
     log.info("P1 regenerated: %d chunks", len(chunk_ids))
 
-    p2_futures = p2_synth.map(chunk_ids)
+    p2_params = tts_config if tts_config else None
+    p2_futures = p2_synth.map(chunk_ids, [p2_params] * len(chunk_ids))
     [await f.result() for f in p2_futures]
 
     p3_futures = p3_transcribe.map(chunk_ids, [language] * len(chunk_ids))
