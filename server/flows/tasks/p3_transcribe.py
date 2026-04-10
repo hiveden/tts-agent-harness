@@ -119,7 +119,7 @@ def _get_http_client() -> httpx.AsyncClient:
     """Return an httpx client — injected or default."""
     if _http_client_factory is not None:
         return _http_client_factory()
-    return httpx.AsyncClient(timeout=httpx.Timeout(connect=10.0, read=300.0, write=30.0))
+    return httpx.AsyncClient(timeout=httpx.Timeout(300.0, connect=10.0))
 
 
 @asynccontextmanager

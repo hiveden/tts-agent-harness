@@ -122,13 +122,17 @@ serve-api:
 		echo "API already running (pid $$(cat $(API_PID)))"; \
 	else \
 		echo "Starting FastAPI on :$(API_PORT)..."; \
-		env -u HTTPS_PROXY -u HTTP_PROXY -u ALL_PROXY -u https_proxy -u http_proxy -u all_proxy \
+		set -a && [ -f .env ] && . ./.env; set +a; \
+		env \
+			no_proxy="localhost,127.0.0.1" \
+			NO_PROXY="localhost,127.0.0.1" \
 			DATABASE_URL="$(DATABASE_URL)" \
 			MINIO_ENDPOINT="$(MINIO_ENDPOINT)" \
 			MINIO_ACCESS_KEY=minioadmin \
 			MINIO_SECRET_KEY=minioadmin \
 			MINIO_BUCKET=tts-harness \
 			PREFECT_API_URL="http://localhost:$(PREFECT_PORT)/api" \
+			NODE_USE_ENV_PROXY=1 \
 			nohup .venv-server/bin/uvicorn server.api.main:app \
 				--host 0.0.0.0 --port $(API_PORT) --log-level info \
 				> /tmp/tts-harness-api.log 2>&1 & \

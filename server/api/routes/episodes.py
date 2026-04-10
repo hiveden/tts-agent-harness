@@ -389,22 +389,97 @@ async def run_episode(
         flow_run_id = str(flow_run.id)
     else:
         # Dev mode: run flow in-process as a background task
-        from server.flows.run_episode import run_episode_flow
         from server.flows.worker_bootstrap import bootstrap as _bootstrap
+        _bootstrap()
 
-        async def _run_in_background():
+        async def _run_dev():
+            """Dev mode: run pipeline stages directly (no Prefect decorators)."""
+            import logging
+            _log = logging.getLogger("dev_runner")
             try:
-                _bootstrap()  # idempotent — sets up DB/MinIO/task DI
-                await run_episode_flow(
-                    episode_id=episode_id,
-                    mode=mode,
-                    chunk_ids=chunk_ids,
-                )
+                from server.core.repositories import ChunkRepo, EpisodeRepo
+                from server.flows.worker_bootstrap import _session_factory, _storage
+
+                if mode == "chunk_only":
+                    from server.flows.worker_bootstrap import get_p1_context
+                    from server.flows.tasks.p1_chunk import p1_chunk
+                    ctx = get_p1_context()
+                    result = await p1_chunk.fn(episode_id, ctx=ctx)
+                    _log.info("P1 done: %d chunks", len(result.chunks))
+                    return
+
+                # synthesize / retry_failed / regenerate
+                async with _session_factory() as sess:
+                    all_chunks = await ChunkRepo(sess).list_by_episode(episode_id)
+                    ep = await EpisodeRepo(sess).get(episode_id)
+                    tts_config = (ep.config if ep else None) or {}
+
+                target = list(all_chunks)
+                if chunk_ids:
+                    cid_set = set(chunk_ids)
+                    target = [c for c in target if c.id in cid_set]
+
+                if mode == "retry_failed":
+                    target = [c for c in target if c.status == "failed"]
+
+                if mode == "regenerate":
+                    from server.flows.worker_bootstrap import get_p1_context
+                    from server.flows.tasks.p1_chunk import p1_chunk
+                    ctx = get_p1_context()
+                    result = await p1_chunk.fn(episode_id, ctx=ctx)
+                    target_ids = [c.id for c in result.chunks]
+                    _log.info("P1 regenerated: %d chunks", len(target_ids))
+                else:
+                    target_ids = [c.id for c in target]
+
+                # P2: synthesize only chunks without selected_take (D-05)
+                from server.flows.tasks.p2_synth import run_p2_synth
+                p2_params = tts_config if tts_config else None
+                for cid in target_ids:
+                    if mode == "synthesize":
+                        chunk_obj = next((c for c in target if c.id == cid), None)
+                        if chunk_obj and chunk_obj.selected_take_id:
+                            _log.info("P2 skip %s (has take)", cid)
+                            continue
+                    _log.info("P2 synth %s", cid)
+                    await run_p2_synth(cid, params=p2_params)
+
+                # P3: transcribe
+                from server.flows.tasks.p3_transcribe import run_p3_transcribe
+                for cid in target_ids:
+                    _log.info("P3 transcribe %s", cid)
+                    await run_p3_transcribe(cid)
+
+                # P5: subtitles
+                from server.flows.tasks.p5_subtitles import run_p5_subtitles
+                for cid in target_ids:
+                    _log.info("P5 subtitle %s", cid)
+                    await run_p5_subtitles(cid)
+
+                # P6: concat
+                from server.flows.tasks.p6_concat import run_p6_concat
+                async with _session_factory() as sess:
+                    _log.info("P6 concat %s", episode_id)
+                    await run_p6_concat(episode_id, session=sess, storage=_storage)
+
+                # Mark done
+                async with _session_factory() as sess:
+                    await EpisodeRepo(sess).set_status(episode_id, "done")
+                    await sess.commit()
+                _log.info("Episode %s → done", episode_id)
+
             except Exception as exc:
                 import logging
-                logging.getLogger("run_episode").error("flow failed: %s", exc, exc_info=True)
+                logging.getLogger("dev_runner").error("flow failed: %s", exc, exc_info=True)
+                # Mark failed
+                try:
+                    async with _session_factory() as sess:
+                        await EpisodeRepo(sess).set_status(episode_id, "failed")
+                        await sess.commit()
+                except Exception:
+                    pass
 
-        asyncio.create_task(_run_in_background())
+        asyncio.create_task(_run_dev())
 
     await repo.set_status(episode_id, "running")
 
@@ -502,14 +577,15 @@ async def retry_chunk(
     else:
         from server.flows.retry_chunk import retry_chunk_stage_flow
         from server.flows.worker_bootstrap import bootstrap as _bootstrap
-        async def _retry_bg():
+        import threading
+        def _retry_thread():
             try:
                 _bootstrap()
-                await retry_chunk_stage_flow(episode_id, chunk_id, from_stage, cascade=cascade)
+                asyncio.run(retry_chunk_stage_flow(episode_id, chunk_id, from_stage, cascade=cascade))
             except Exception as exc:
                 import logging
                 logging.getLogger("retry_chunk").error("retry failed: %s", exc, exc_info=True)
-        asyncio.create_task(_retry_bg())
+        threading.Thread(target=_retry_thread, daemon=True).start()
 
     await session.commit()
     return RetryResponse(flow_run_id=flow_run_id)
@@ -558,14 +634,15 @@ async def finalize_take(
     else:
         from server.flows.finalize_take import finalize_take_flow
         from server.flows.worker_bootstrap import bootstrap as _bootstrap
-        async def _finalize_bg():
+        import threading
+        def _finalize_thread():
             try:
                 _bootstrap()
-                await finalize_take_flow(episode_id, chunk_id, take_id)
+                asyncio.run(finalize_take_flow(episode_id, chunk_id, take_id))
             except Exception as exc:
                 import logging
                 logging.getLogger("finalize_take").error("finalize failed: %s", exc, exc_info=True)
-        asyncio.create_task(_finalize_bg())
+        threading.Thread(target=_finalize_thread, daemon=True).start()
 
     await session.commit()
     return FinalizeResponse(flow_run_id=flow_run_id)
