@@ -18,12 +18,14 @@ dependencies = [
   "prefect>=3",
   "fastapi>=0.115",
   "uvicorn[standard]>=0.30",
+  "python-multipart>=0.0.9",
 ]
 
 [project.optional-dependencies]
 dev = [
   "pytest>=8",
   "pytest-asyncio>=0.23",
+  "httpx>=0.27",
   "testcontainers[postgres,minio]>=4.0",
 ]
 
