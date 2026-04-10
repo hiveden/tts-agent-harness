@@ -1,6 +1,3 @@
-import { createReadStream, statSync } from "fs";
-import { Readable } from "stream";
-import { getServices } from "@/lib/factory";
 import { handleError } from "../../_http";
 
 export async function GET(
@@ -8,20 +5,11 @@ export async function GET(
   { params }: { params: Promise<{ id: string }> },
 ) {
   try {
-    const { id } = await params;
-    const { preview } = getServices();
-    const filePath = await preview.getPreviewFile(id);
-    const stat = statSync(filePath);
-    const stream = Readable.toWeb(
-      createReadStream(filePath),
-    ) as unknown as ReadableStream<Uint8Array>;
-    return new Response(stream, {
-      headers: {
-        "Content-Type": "text/html; charset=utf-8",
-        "Content-Length": String(stat.size),
-        "Cache-Control": "no-store",
-      },
-    });
+    await params; // consume
+    return new Response(
+      JSON.stringify({ error: "not_implemented", message: "preview served from FastAPI" }),
+      { status: 501, headers: { "content-type": "application/json" } },
+    );
   } catch (e) {
     return handleError(e);
   }

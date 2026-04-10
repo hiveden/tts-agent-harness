@@ -1,8 +1,7 @@
 /**
- * Type mappers: FastAPI Pydantic schemas -> frontend domain types.
+ * Type mappers: FastAPI snake_case -> frontend camelCase.
  *
- * Backend responses use snake_case; frontend types use camelCase.
- * This module centralizes all conversion logic.
+ * Thin mapping only — no complex data reshaping.
  */
 
 import type {
@@ -11,11 +10,14 @@ import type {
   Episode,
   EpisodeStatus,
   EpisodeSummary,
+  StageRun,
+  StageName,
+  StageStatus,
   Take,
 } from "../../types";
 
 // ---------------------------------------------------------------------------
-// Raw backend response shapes (what the API actually returns)
+// Raw backend response shapes
 // ---------------------------------------------------------------------------
 
 export interface RawEpisodeSummary {
@@ -90,75 +92,70 @@ export interface RawEpisodeDetail {
 export function mapTake(raw: RawTake): Take {
   return {
     id: raw.id,
-    file: raw.audio_uri,
+    audioUri: raw.audio_uri,
     durationS: raw.duration_s,
-    createdAt: raw.created_at,
     params: raw.params,
+    createdAt: raw.created_at,
+  };
+}
+
+export function mapStageRun(raw: RawStageRun): StageRun {
+  return {
+    stage: raw.stage as StageName,
+    status: raw.status as StageStatus,
+    attempt: raw.attempt,
+    startedAt: raw.started_at ?? undefined,
+    finishedAt: raw.finished_at ?? undefined,
+    durationMs: raw.duration_ms ?? undefined,
+    error: raw.error ?? undefined,
+    logUri: raw.log_uri ?? undefined,
+    stale: raw.stale,
   };
 }
 
 export function mapChunk(raw: RawChunkDetail): Chunk {
   return {
     id: raw.id,
+    episodeId: raw.episode_id,
     shotId: raw.shot_id,
-    index: raw.idx,
+    idx: raw.idx,
     text: raw.text,
     textNormalized: raw.text_normalized,
     subtitleText: raw.subtitle_text,
     status: raw.status,
-    takes: raw.takes.map(mapTake),
     selectedTakeId: raw.selected_take_id,
-    charCount: raw.char_count,
     boundaryHash: raw.boundary_hash ?? undefined,
+    charCount: raw.char_count,
+    lastEditedAt: raw.last_edited_at ?? undefined,
     metadata: raw.extra_metadata ?? {},
+    takes: raw.takes.map(mapTake),
+    stageRuns: raw.stage_runs.map(mapStageRun),
   };
 }
 
-/** Infer current stage from stage_runs across all chunks. */
-function inferCurrentStage(chunks: RawChunkDetail[]): string | null {
-  // Find any currently running stage
-  for (const c of chunks) {
-    for (const sr of c.stage_runs) {
-      if (sr.status === "running") {
-        return sr.stage.toUpperCase();
-      }
-    }
-  }
-  return null;
-}
-
 export function mapEpisodeDetail(raw: RawEpisodeDetail): Episode {
-  const chunks = raw.chunks.map(mapChunk);
-  const totalDurationS = chunks.reduce((sum, c) => {
-    const selectedTake = c.takes.find((t) => t.id === c.selectedTakeId);
-    return sum + (selectedTake?.durationS ?? 0);
-  }, 0);
-
   return {
     id: raw.id,
+    title: raw.title,
+    description: raw.description,
     status: raw.status,
-    currentStage: inferCurrentStage(raw.chunks),
-    chunks,
-    totalDurationS,
+    scriptUri: raw.script_uri,
+    config: raw.config,
     createdAt: raw.created_at,
     updatedAt: raw.updated_at,
     metadata: raw.extra_metadata ?? {},
-    scriptTitle: raw.title,
-    scriptDescription: raw.description ?? undefined,
+    chunks: raw.chunks.map(mapChunk),
   };
 }
 
 export function mapEpisodeSummary(raw: RawEpisodeSummary): EpisodeSummary {
   return {
     id: raw.id,
+    title: raw.title,
     status: raw.status,
-    currentStage: null,
     chunkCount: raw.chunk_count,
+    doneCount: raw.done_count,
+    failedCount: raw.failed_count,
     updatedAt: raw.updated_at,
-    metadata: {
-      title: raw.title,
-      doneCount: raw.done_count,
-      failedCount: raw.failed_count,
-    },
   };
 }

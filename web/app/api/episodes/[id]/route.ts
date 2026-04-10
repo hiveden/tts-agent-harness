@@ -7,7 +7,7 @@ export async function GET(
 ) {
   try {
     const { id } = await params;
-    const { episodes, logs, progress } = getServices();
+    const { episodes } = getServices();
     const ep = await episodes.get(id);
     if (!ep) {
       return new Response(
@@ -15,17 +15,7 @@ export async function GET(
         { status: 404, headers: { "content-type": "application/json" } },
       );
     }
-    const [logTail, running, currentStage] = await Promise.all([
-      logs.tail(id, 100),
-      progress.isRunning(id),
-      progress.getCurrentStage(id),
-    ]);
-    return Response.json({
-      episode: { ...ep, currentStage },
-      logTail,
-      running,
-      currentStage,
-    });
+    return Response.json(ep);
   } catch (e) {
     return handleError(e);
   }

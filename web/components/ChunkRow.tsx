@@ -49,17 +49,16 @@ export function ChunkRow({
   onEdit,
   onCancelEdit,
 }: Props) {
+  void episodeId; // kept for future use
   const isDirty = dirty !== null;
   const hasSubField = chunk.subtitleText != null;
   const audioRef = useRef<HTMLAudioElement>(null);
   const [currentTime, setCurrentTime] = useState(0);
 
-  // 真音频:跟随 isPlaying 调 play/pause + 监听 timeupdate
   useEffect(() => {
     const el = audioRef.current;
     if (!el) return;
     if (isPlaying) {
-      // 不要重置 currentTime — 允许从 seekTo 设的位置继续
       el.play().catch((e) => {
         console.warn("audio play failed", e);
       });
@@ -69,25 +68,23 @@ export function ChunkRow({
   }, [isPlaying]);
 
   const currentTakeForUrl = chunk.takes.find((t) => t.id === chunk.selectedTakeId);
-  // cache-bust: 用 take.createdAt 作为 query string,chunk 重做后 take 变,URL 变
   const cacheBust = currentTakeForUrl?.createdAt
     ? `?v=${encodeURIComponent(currentTakeForUrl.createdAt)}`
     : `?v=${chunk.charCount}`;
   const audioUrl =
-    chunk.selectedTakeId && (chunk.status === "synth_done" || chunk.status === "transcribed")
-      ? getAudioUrl(episodeId, chunk.id, chunk.selectedTakeId) + cacheBust
+    chunk.selectedTakeId &&
+    currentTakeForUrl &&
+    (chunk.status === "synth_done" || chunk.status === "transcribed")
+      ? getAudioUrl(currentTakeForUrl.audioUri) + cacheBust
       : "";
 
-  // 当前显示的文本:由 displayMode 决定字段,edit 暂存优先
   let displayText: string;
   if (displayMode === "tts") {
-    // TTS 源:保留控制标记 [break]/[long break]/[breath],让作者看到
     displayText =
       edit?.textNormalized !== undefined
         ? edit.textNormalized
         : chunk.textNormalized;
   } else {
-    // 字幕:strip 控制标记 + subtitleText 优先
     displayText =
       edit?.subtitleText !== undefined
         ? stripControlMarkers(edit.subtitleText)
@@ -97,12 +94,10 @@ export function ChunkRow({
   const currentTake = chunk.takes.find((t) => t.id === chunk.selectedTakeId);
   const durationS = currentTake?.durationS ?? 0;
 
-  // Stage change 后禁用播放(必须 Apply/Discard 才能再听)
   const canPlay =
     (chunk.status === "synth_done" || chunk.status === "transcribed") &&
     !isDirty;
 
-  // 点字幕跳到对应位置 + 自动播放
   const handleSeek = (timeS: number) => {
     if (!canPlay) return;
     const el = audioRef.current;
@@ -111,7 +106,7 @@ export function ChunkRow({
       el.currentTime = target;
       setCurrentTime(target);
     }
-    if (!isPlaying) onPlay(); // 触发 parent 切到 playing
+    if (!isPlaying) onPlay();
   };
 
   const rowBg = isPlaying
@@ -136,7 +131,7 @@ export function ChunkRow({
         {hasSubField ? (
           <span
             className="ml-1 text-[9px] text-purple-500"
-            title="独立 subtitleText"
+            title="subtitle_text set"
           >
             ◆
           </span>
@@ -144,14 +139,14 @@ export function ChunkRow({
       </td>
       <td className="py-2.5 align-top">{statusIcon(chunk.status)}</td>
       <td className="py-2.5 align-top text-[11px] text-neutral-500 font-mono">
-        {durationS > 0 ? `${durationS.toFixed(1)}s` : "—"}
+        {durationS > 0 ? `${durationS.toFixed(1)}s` : "--"}
       </td>
       <td className="py-2.5 align-top">
         <button
           type="button"
           onClick={onPlay}
           disabled={!canPlay}
-          title={isDirty ? "有暂存改动,Apply 后才能播放" : ""}
+          title={isDirty ? "Has staged changes, Apply first" : ""}
           className={`w-7 h-7 inline-flex items-center justify-center rounded ${
             canPlay
               ? "hover:bg-neutral-200 text-neutral-700"
@@ -187,14 +182,14 @@ export function ChunkRow({
         ) : null}
         {audioUrl ? (
           <audio
-            key={audioUrl /* 重做后强制重建 element */}
+            key={audioUrl}
             ref={audioRef}
             src={audioUrl}
             preload="none"
             onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
             onEnded={() => {
               setCurrentTime(0);
-              onPlay(); // 通知 parent 切回 idle
+              onPlay();
             }}
             className="hidden"
           />
@@ -204,7 +199,7 @@ export function ChunkRow({
         <button
           type="button"
           onClick={isEditing ? onCancelEdit : onEdit}
-          title={isEditing ? "关闭编辑" : "编辑"}
+          title={isEditing ? "Close edit" : "Edit"}
           className={`w-7 h-7 inline-flex items-center justify-center rounded ${
             isEditing
               ? "bg-neutral-900 text-white hover:bg-neutral-800"

@@ -1,10 +1,6 @@
 /**
- * Re-export all port interfaces for convenient import:
- *   import type { EpisodeStore, PipelineRunner } from "@/lib/ports";
+ * Re-export all port interfaces.
  */
 
 export * from "./store";
 export * from "./runner";
-export * from "./lock";
-export * from "./observability";
-export * from "./files";
