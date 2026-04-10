@@ -7,6 +7,7 @@ validate input → call repo → return response model.
 from __future__ import annotations
 
 import json
+import os
 from datetime import datetime
 from typing import Any
 
@@ -369,14 +370,41 @@ async def run_episode(
     if ep.status == "running":
         raise DomainError("invalid_state", "episode is already running")
 
-    flow_run = await prefect_client.create_flow_run_from_deployment(
-        "run-episode/run-episode",
-        parameters={
-            "episode_id": episode_id,
-            "mode": mode,
-            "chunk_ids": chunk_ids,
-        },
-    )
+    # Try Prefect deployment first; fall back to in-process execution (dev mode)
+    import asyncio
+    import uuid
+    use_prefect = os.environ.get("TTS_USE_PREFECT", "").lower() in ("1", "true", "yes")
+
+    flow_run_id = str(uuid.uuid4())
+
+    if use_prefect:
+        flow_run = await prefect_client.create_flow_run_from_deployment(
+            "run-episode/run-episode",
+            parameters={
+                "episode_id": episode_id,
+                "mode": mode,
+                "chunk_ids": chunk_ids,
+            },
+        )
+        flow_run_id = str(flow_run.id)
+    else:
+        # Dev mode: run flow in-process as a background task
+        from server.flows.run_episode import run_episode_flow
+        from server.flows.worker_bootstrap import bootstrap as _bootstrap
+
+        async def _run_in_background():
+            try:
+                _bootstrap()  # idempotent — sets up DB/MinIO/task DI
+                await run_episode_flow(
+                    episode_id=episode_id,
+                    mode=mode,
+                    chunk_ids=chunk_ids,
+                )
+            except Exception as exc:
+                import logging
+                logging.getLogger("run_episode").error("flow failed: %s", exc, exc_info=True)
+
+        asyncio.create_task(_run_in_background())
 
     await repo.set_status(episode_id, "running")
 
@@ -389,7 +417,7 @@ async def run_episode(
     )
     await session.commit()
 
-    return RunResponse(flow_run_id=str(flow_run.id))
+    return RunResponse(flow_run_id=flow_run_id)
 
 
 # ---------------------------------------------------------------------------
@@ -456,18 +484,35 @@ async def retry_chunk(
     if chunk is None or chunk.episode_id != episode_id:
         raise DomainError("not_found", f"chunk '{chunk_id}' not found in episode '{episode_id}'")
 
-    flow_run = await prefect_client.create_flow_run_from_deployment(
-        "retry-chunk-stage/retry-chunk-stage",
-        parameters={
-            "episode_id": episode_id,
-            "chunk_id": chunk_id,
-            "from_stage": from_stage,
-            "cascade": cascade,
-        },
-    )
-    await session.commit()
+    import asyncio, uuid
+    use_prefect = os.environ.get("TTS_USE_PREFECT", "").lower() in ("1", "true", "yes")
+    flow_run_id = str(uuid.uuid4())
 
-    return RetryResponse(flow_run_id=str(flow_run.id))
+    if use_prefect:
+        flow_run = await prefect_client.create_flow_run_from_deployment(
+            "retry-chunk-stage/retry-chunk-stage",
+            parameters={
+                "episode_id": episode_id,
+                "chunk_id": chunk_id,
+                "from_stage": from_stage,
+                "cascade": cascade,
+            },
+        )
+        flow_run_id = str(flow_run.id)
+    else:
+        from server.flows.retry_chunk import retry_chunk_stage_flow
+        from server.flows.worker_bootstrap import bootstrap as _bootstrap
+        async def _retry_bg():
+            try:
+                _bootstrap()
+                await retry_chunk_stage_flow(episode_id, chunk_id, from_stage, cascade=cascade)
+            except Exception as exc:
+                import logging
+                logging.getLogger("retry_chunk").error("retry failed: %s", exc, exc_info=True)
+        asyncio.create_task(_retry_bg())
+
+    await session.commit()
+    return RetryResponse(flow_run_id=flow_run_id)
 
 
 # ---------------------------------------------------------------------------
@@ -496,17 +541,34 @@ async def finalize_take(
     if take is None or take.chunk_id != chunk_id:
         raise DomainError("not_found", f"take '{take_id}' not found in chunk '{chunk_id}'")
 
-    flow_run = await prefect_client.create_flow_run_from_deployment(
-        "finalize-take/finalize-take",
-        parameters={
-            "episode_id": episode_id,
-            "chunk_id": chunk_id,
-            "take_id": take_id,
-        },
-    )
-    await session.commit()
+    import asyncio, uuid
+    use_prefect = os.environ.get("TTS_USE_PREFECT", "").lower() in ("1", "true", "yes")
+    flow_run_id = str(uuid.uuid4())
 
-    return FinalizeResponse(flow_run_id=str(flow_run.id))
+    if use_prefect:
+        flow_run = await prefect_client.create_flow_run_from_deployment(
+            "finalize-take/finalize-take",
+            parameters={
+                "episode_id": episode_id,
+                "chunk_id": chunk_id,
+                "take_id": take_id,
+            },
+        )
+        flow_run_id = str(flow_run.id)
+    else:
+        from server.flows.finalize_take import finalize_take_flow
+        from server.flows.worker_bootstrap import bootstrap as _bootstrap
+        async def _finalize_bg():
+            try:
+                _bootstrap()
+                await finalize_take_flow(episode_id, chunk_id, take_id)
+            except Exception as exc:
+                import logging
+                logging.getLogger("finalize_take").error("finalize failed: %s", exc, exc_info=True)
+        asyncio.create_task(_finalize_bg())
+
+    await session.commit()
+    return FinalizeResponse(flow_run_id=flow_run_id)
 
 
 # ---------------------------------------------------------------------------
