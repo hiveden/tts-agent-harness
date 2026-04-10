@@ -1,108 +1,117 @@
-# Dev Setup — TTS Agent Harness (W0 Infra)
-
-This guide covers the **W0 infrastructure wave**: bringing up Postgres,
-MinIO, and Prefect server on a clean laptop, then running the initial
-alembic migration so the business schema is in place.
-
-FastAPI, Prefect worker, whisperx-svc, and the Next.js UI land in later
-waves and are not covered here.
+# Dev Setup — TTS Agent Harness
 
 ## Prerequisites
 
-| Tool            | Version    | Notes                                   |
-|-----------------|------------|-----------------------------------------|
-| Docker Desktop  | 24+        | Required for compose V2 (`docker compose`) |
-| Python          | 3.12+      | Host-side alembic migrate               |
-| GNU Make        | any        | Targets defined in `Makefile`           |
-| `uv` or `pip`   | latest     | To install server dependencies          |
+| Tool | Version | Notes |
+|---|---|---|
+| Docker Desktop | 24+ | `docker compose` V2 |
+| Python | 3.11+ | 3.14 有 wheel 兼容问题，推荐 3.11/3.12 |
+| Node.js | 22+ | Next.js 16 要求 |
+| pnpm | 10+ | 前端包管理 |
+| ffmpeg | 7+ | P6 拼接需要 (`brew install ffmpeg`) |
+| GNU Make | any | — |
 
-## Port map
+## 端口表
 
-| Port | Service        | Notes                                     |
-|------|----------------|-------------------------------------------|
-| 3010 | next-ui        | reserved (added by A10-Frontend wave)     |
-| 8000 | fastapi        | reserved (added by A9-API wave)           |
-| 4200 | prefect-server | Prefect UI + API                          |
-| 5432 | postgres       | business + prefect databases              |
-| 9000 | minio          | S3-compatible API                          |
-| 9001 | minio-console  | web UI (user: `minioadmin` / `minioadmin`) |
-| 7860 | whisperx-svc   | reserved (added by A3-WhisperX wave)      |
+| 端口 | 服务 | 说明 |
+|---|---|---|
+| **3010** | Next.js UI | 前端 |
+| **8100** | FastAPI | 后端 API + SSE |
+| **55432** | PostgreSQL | 业务数据库 |
+| **59000** | MinIO API | S3 兼容对象存储 |
+| **59001** | MinIO Console | Web 管理界面 |
+| **54200** | Prefect Server | Workflow UI + API |
+| 7860 | WhisperX | 转写服务（独立部署，可选） |
 
-## First run
+> 端口有意使用非标准映射（55432 而非 5432）以避免与本机已有服务冲突。
+
+## 快速开始
 
 ```bash
-# 1) Create docker/.env from the example template
-make env
-
-# 2) Start postgres + minio + prefect-server (detached)
+# 1. 起 Docker 基础设施（Postgres + MinIO + Prefect）
 make dev
 
-# 3) Wait ~20s for health checks, then verify
-make status
-```
-
-Expected `make status` output: all services `running (healthy)` except
-`minio-init` which exits `0` after creating the `tts-harness` bucket.
-
-## Install server deps + run migration
-
-```bash
-# Create a venv and install (pick one)
-python -m venv .venv && source .venv/bin/activate
+# 2. 安装 Python 依赖
+python3.11 -m venv .venv-server
+source .venv-server/bin/activate
 pip install -e 'server[dev]'
 
-# Apply the initial schema to the business database on localhost:5432
+# 3. 运行数据库迁移
 make migrate
+
+# 4. 安装前端依赖
+cd web && pnpm install && cd ..
+
+# 5. 一键启动后端 + 前端
+make serve
+
+# 6. 打开浏览器
+make open
 ```
 
-Expected: alembic reports `Running upgrade  -> V001_initial, V001 initial`
-and exits 0.
-
-## Verify the stack
-
-### Postgres — 5 business tables present
+## 日常使用
 
 ```bash
-make psql
-# then at the psql prompt:
-\dt
+# 启动全部（docker infra 已在跑的话直接起应用）
+make serve
+
+# 停止应用（不停 docker）
+make stop
+
+# 停止全部（含 docker）
+make down
+
+# 看日志
+tail -f /tmp/tts-harness-api.log   # 后端
+tail -f /tmp/tts-harness-web.log   # 前端
+make logs                           # Docker 容器
 ```
 
-You should see: `alembic_version`, `chunks`, `episodes`, `events`,
-`stage_runs`, `takes`.
-
-### MinIO — bucket exists
+## 测试
 
 ```bash
-make minio-console   # opens http://localhost:9001
+make test         # 单元 + 集成测试（不含 e2e）
+make test-e2e     # e2e 测试（需要 dev stack 在跑）
+make test-live    # 真 HTTP e2e（自动起 uvicorn）
+make test-all     # 全量
+make tsc          # TypeScript 类型检查
 ```
 
-Log in with `minioadmin` / `minioadmin`. The `tts-harness` bucket is
-listed in the Object Browser.
+## 类型生成
 
-### Prefect UI
+后端 Pydantic 模型变更后，重新生成前端类型：
 
 ```bash
-open http://localhost:4200
+make gen-types    # domain.py → openapi.json → openapi.d.ts
+make tsc          # 验证一致性
 ```
 
-You land on an empty Prefect dashboard. No deployments yet — A8-Flow
-registers them in a later wave.
+## 环境变量
 
-## Tear down
+`make serve` 自动设置全部环境变量，不需要手动 export。关键变量：
+
+| 变量 | 默认值 | 说明 |
+|---|---|---|
+| `DATABASE_URL` | `postgresql+asyncpg://harness:harness@localhost:55432/harness` | 自动设置 |
+| `MINIO_ENDPOINT` | `localhost:59000` | 自动设置 |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8100` | 自动设置 |
+| `FISH_TTS_KEY` | — | 需要手动设置才能调用 Fish API |
+| `HARNESS_API_TOKEN` | — | 不设则 dev mode（允许所有请求） |
+
+## 重要：ClashX 代理
+
+本机的 `HTTPS_PROXY` / `ALL_PROXY` 环境变量会干扰 uvicorn 和 asyncpg 的 localhost 连接。`make serve` 已自动清除这些变量。如果手动启动后端，需要：
 
 ```bash
-make down              # stop containers, keep volumes
-# nuke volumes too (destroys all DB + MinIO data):
-docker volume rm tts-harness-postgres-data tts-harness-minio-data tts-harness-prefect-data
+env -u HTTPS_PROXY -u ALL_PROXY uvicorn server.api.main:app --port 8100
 ```
 
-## Troubleshooting
+## 故障排查
 
-- **`make dev` hangs on prefect-server healthcheck**: prefect server needs
-  ~30s to apply its own internal migrations on first boot. `make logs`
-  will show progress. Retry `make status` after ~60s.
-- **`make migrate` fails with `connection refused`**: `make dev` must be
-  running first. Check `make status`.
-- **`minio-init` exits with error**: remove the stopped container and
-  re-run `make dev`. The bucket creation is idempotent.
+| 问题 | 原因 | 解决 |
+|---|---|---|
+| API 500 "password authentication failed" | `DATABASE_URL` 端口不对或未设置 | 用 `make serve`，它自动设置正确端口 |
+| 前端 sidebar 空白 | `NEXT_PUBLIC_API_URL` 未设置或指向错误端口 | 用 `make serve` 重启前端 |
+| `address already in use` | 端口被占 | `make stop` 先清理，或修改 `API_PORT` |
+| asyncpg SOCKS proxy error | ClashX 代理被继承 | `make serve` 已处理；手动启动需 `env -u HTTPS_PROXY` |
+| Docker credential helper | PATH 缺少 Docker Desktop bin | `export PATH="/Applications/Docker.app/Contents/Resources/bin:$PATH"` |
