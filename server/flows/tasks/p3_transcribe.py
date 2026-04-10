@@ -290,7 +290,7 @@ async def _call_whisperx(
     will handle transient 5xx / timeouts).
     """
     url = f"{_whisperx_url}/transcribe"
-    files = {"file": ("audio.wav", wav_bytes, "audio/wav")}
+    files = {"audio": ("audio.wav", wav_bytes, "audio/wav")}
     data = {"language": language}
 
     response = await client.post(url, files=files, data=data)

@@ -235,7 +235,8 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
 
     # 6. Persist state + stage_finished event.
     async with _session_scope(session_factory) as session:
-        await ChunkRepo(session).set_status(chunk_id, "p5_done")
+        # chunk.status stays "transcribed" — fine-grained progress via stage_runs
+        pass
         await write_event(
             session,
             episode_id=episode_id,

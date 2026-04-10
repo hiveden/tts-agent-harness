@@ -173,7 +173,7 @@ serve-whisperx:
 		echo "  WhisperX container started (model loading ~30-60s)"; \
 	else \
 		echo "Starting WhisperX (local .venv)..."; \
-		MODEL_CACHE_DIR="$$HOME/.cache/whisperx" \
+		MODEL_CACHE_DIR="$$HOME/.cache/huggingface/hub" \
 		HF_HOME="$$HOME/.cache/huggingface" \
 		nohup .venv/bin/uvicorn whisperx-svc.server:app \
 			--host 0.0.0.0 --port 7860 --log-level $(LOG_LEVEL) \
