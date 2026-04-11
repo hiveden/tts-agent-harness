@@ -95,8 +95,8 @@ export function StageProgress({
   } else if (status === "ready") {
     icon = "○";
     iconColor = "text-neutral-400";
-    mainText = "未运行";
-    detailText = "点 Generate 开始 P1 切分";
+    mainText = `已切分 · ${totalChunks} chunks`;
+    detailText = "点「合成全部」开始 TTS 合成";
   }
 
   return (
