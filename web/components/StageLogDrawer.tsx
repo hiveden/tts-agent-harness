@@ -40,7 +40,7 @@ export function StageLogDrawer({
   const [fetchError, setFetchError] = useState<string | null>(null);
   const [retrying, setRetrying] = useState(false);
 
-  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8000";
+  const apiBase = process.env.NEXT_PUBLIC_API_URL ?? "http://localhost:8100";
 
   useEffect(() => {
     if (!open) return;
@@ -106,12 +106,29 @@ export function StageLogDrawer({
 
         {loading ? (
           <div className="flex-1 flex items-center justify-center text-xs text-neutral-400">加载日志中…</div>
-        ) : fetchError ? (
-          <div className="flex-1 flex items-center justify-center text-xs text-red-500 px-4 text-center">日志加载失败: {fetchError}</div>
-        ) : log === "" ? (
-          <div className="flex-1 flex items-center justify-center text-xs text-neutral-400">暂无日志</div>
-        ) : (
+        ) : log !== "" ? (
           <pre className="text-xs font-mono whitespace-pre-wrap p-4 overflow-auto flex-1 bg-neutral-50">{log}</pre>
+        ) : (
+          <div className="flex-1 overflow-auto p-4 text-xs">
+            {stageRun ? (
+              <div className="space-y-2">
+                <div className="text-neutral-500">Stage 执行信息（日志文件暂不可用）</div>
+                <table className="text-[11px] w-full">
+                  <tbody className="divide-y divide-neutral-100">
+                    <tr><td className="py-1 text-neutral-400 w-24">Status</td><td className="py-1 font-mono">{stageRun.status}</td></tr>
+                    <tr><td className="py-1 text-neutral-400">Attempt</td><td className="py-1 font-mono">{stageRun.attempt}</td></tr>
+                    {stageRun.startedAt && <tr><td className="py-1 text-neutral-400">Started</td><td className="py-1 font-mono">{stageRun.startedAt}</td></tr>}
+                    {stageRun.finishedAt && <tr><td className="py-1 text-neutral-400">Finished</td><td className="py-1 font-mono">{stageRun.finishedAt}</td></tr>}
+                    {stageRun.durationMs != null && <tr><td className="py-1 text-neutral-400">Duration</td><td className="py-1 font-mono">{stageRun.durationMs}ms</td></tr>}
+                    {stageRun.error && <tr><td className="py-1 text-neutral-400">Error</td><td className="py-1 font-mono text-red-600 whitespace-pre-wrap">{stageRun.error}</td></tr>}
+                    {stageRun.stale && <tr><td className="py-1 text-neutral-400">Stale</td><td className="py-1 text-amber-600">上游已更新，此 stage 未同步</td></tr>}
+                  </tbody>
+                </table>
+              </div>
+            ) : (
+              <div className="text-neutral-400 text-center mt-8">暂无日志</div>
+            )}
+          </div>
         )}
 
         {hasUnsavedEdits ? (
