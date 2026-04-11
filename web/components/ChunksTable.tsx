@@ -16,6 +16,8 @@ interface Props {
   onCancelEdit: () => void;
   onStage: (cid: string, draft: ChunkEdit) => void;
   onStageClick?: (cid: string, stage: StageName) => void;
+  onPreviewTake?: (cid: string, takeId: string) => void;
+  onUseTake?: (cid: string, takeId: string) => void;
 }
 
 function computeDirty(edit: ChunkEdit | undefined): DirtyType {
@@ -39,6 +41,8 @@ export function ChunksTable({
   onCancelEdit,
   onStage,
   onStageClick,
+  onPreviewTake,
+  onUseTake,
 }: Props) {
   const [displayMode, setDisplayMode] = useState<DisplayMode>("subtitle");
 
@@ -110,6 +114,8 @@ export function ChunksTable({
               onCancelEdit={onCancelEdit}
               onStage={(draft) => onStage(c.id, draft)}
               onStageClick={onStageClick ? (stage) => onStageClick(c.id, stage) : undefined}
+              onPreviewTake={onPreviewTake ? (takeId) => onPreviewTake(c.id, takeId) : undefined}
+              onUseTake={onUseTake ? (takeId) => onUseTake(c.id, takeId) : undefined}
             />
           );
         })}
@@ -131,6 +137,8 @@ interface RowGroupProps {
   onCancelEdit: () => void;
   onStage: (draft: ChunkEdit) => void;
   onStageClick?: (stage: StageName) => void;
+  onPreviewTake?: (takeId: string) => void;
+  onUseTake?: (takeId: string) => void;
 }
 
 function RowGroup({
@@ -146,6 +154,8 @@ function RowGroup({
   onCancelEdit,
   onStage,
   onStageClick,
+  onPreviewTake,
+  onUseTake,
 }: RowGroupProps) {
   return (
     <>
@@ -161,6 +171,8 @@ function RowGroup({
         onEdit={onEdit}
         onCancelEdit={onCancelEdit}
         onStageClick={onStageClick}
+        onPreviewTake={onPreviewTake}
+        onUseTake={onUseTake}
       />
       {isEditing ? (
         <ChunkEditor

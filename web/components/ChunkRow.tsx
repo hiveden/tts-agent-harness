@@ -23,6 +23,8 @@ interface Props {
   onEdit: () => void;
   onCancelEdit: () => void;
   onStageClick?: (stage: StageName) => void;
+  onPreviewTake?: (takeId: string) => void;
+  onUseTake?: (takeId: string) => void;
 }
 
 function statusIcon(status: ChunkStatus) {
@@ -51,6 +53,8 @@ export function ChunkRow({
   onEdit,
   onCancelEdit,
   onStageClick,
+  onPreviewTake,
+  onUseTake,
 }: Props) {
   void episodeId; // kept for future use
   const isDirty = dirty !== null;
@@ -190,6 +194,8 @@ export function ChunkRow({
           <TakeSelector
             takes={chunk.takes}
             selectedTakeId={chunk.selectedTakeId}
+            onPreview={onPreviewTake}
+            onUse={onUseTake}
           />
         ) : null}
         {audioUrl ? (

@@ -9,11 +9,13 @@ import {
   useEpisodeLogs,
   runEpisode,
   retryChunk,
+  finalizeTake,
   applyEdits as apiApplyEdits,
   createEpisode,
   deleteEpisode,
   duplicateEpisode,
   archiveEpisode,
+  getAudioUrl,
 } from "@/lib/hooks";
 import { EpisodeSidebar } from "@/components/EpisodeSidebar";
 import { EpisodeHeader } from "@/components/EpisodeHeader";
@@ -29,7 +31,10 @@ import { StageLogDrawer } from "@/components/StageLogDrawer";
 import { TtsConfigBar } from "@/components/TtsConfigBar";
 
 export default function Page() {
-  const [selectedId, setSelectedId] = useState<string | null>("ch04");
+  const [selectedId, setSelectedId] = useState<string | null>(() => {
+    if (typeof window === "undefined") return null;
+    return window.localStorage.getItem("tts-harness:selectedEpisode");
+  });
   const [edits, setEdits] = useState<EditBatch>({});
   const [editing, setEditing] = useState<string | null>(null);
   const [playingChunkId, setPlayingChunkId] = useState<string | null>(null);
@@ -53,6 +58,7 @@ export default function Page() {
 
   const handleSelect = (id: string) => {
     setSelectedId(id);
+    if (typeof window !== "undefined") window.localStorage.setItem("tts-harness:selectedEpisode", id);
     setEdits({});
     setEditing(null);
     setPlayingChunkId(null);
@@ -264,6 +270,23 @@ export default function Page() {
                       onCancelEdit={() => setEditing(null)}
                       onStage={handleStage}
                       onStageClick={(cid, stage) => setDrawerOpen({ cid, stage })}
+                      onPreviewTake={(cid, takeId) => {
+                        // Play this take's audio
+                        const chunk = episode.chunks.find(c => c.id === cid);
+                        const take = chunk?.takes.find(t => t.id === takeId);
+                        if (take) {
+                          const audio = new Audio(getAudioUrl(take.audioUri));
+                          audio.play().catch(() => {});
+                        }
+                      }}
+                      onUseTake={async (cid, takeId) => {
+                        try {
+                          await finalizeTake(episode.id, cid, takeId);
+                          await mutateDetail();
+                        } catch (e) {
+                          alert(`Finalize failed: ${(e as Error).message}`);
+                        }
+                      }}
                     />
                   </>
                 )}
