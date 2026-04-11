@@ -398,19 +398,31 @@ async def run_episode(
             from datetime import datetime, timezone
             _log = logging.getLogger("dev_runner")
 
-            async def _mark_stage(cid: str, stage: str, status: str, error: str | None = None, started: datetime | None = None):
-                """Write stage_run record so frontend sees per-chunk progress."""
-                from server.core.repositories import StageRunRepo
+            async def _mark_stage(cid: str, stage: str, status: str, error: str | None = None, started: datetime | None = None, context: dict | None = None):
+                """Write stage_run + event with execution context."""
+                from server.core.repositories import StageRunRepo, EventRepo
                 async with _session_factory() as s:
                     sr_repo = StageRunRepo(s)
                     existing = await sr_repo.get(cid, stage)
                     attempt = (existing.attempt + 1) if existing and status == "running" else (existing.attempt if existing else 1)
+                    finished = datetime.now(timezone.utc) if status in ("ok", "failed") else None
+                    duration_ms = int((finished - started).total_seconds() * 1000) if finished and started else None
                     await sr_repo.upsert(
                         chunk_id=cid, stage=stage, status=status,
                         attempt=attempt,
-                        started_at=started, finished_at=datetime.now(timezone.utc) if status in ("ok", "failed") else None,
+                        started_at=started, finished_at=finished,
+                        duration_ms=duration_ms,
                         error=error,
                     )
+                    # Write event with execution context (request/response params)
+                    if context and status in ("ok", "failed"):
+                        event_repo = EventRepo(s)
+                        await event_repo.write(
+                            episode_id=episode_id,
+                            chunk_id=cid,
+                            kind=f"stage_{status}",
+                            payload={"stage": stage, "attempt": attempt, "durationMs": duration_ms, **context},
+                        )
                     await s.commit()
 
             try:
@@ -457,16 +469,32 @@ async def run_episode(
                         chunk_obj = next((c for c in target if c.id == cid), None)
                         if chunk_obj and chunk_obj.selected_take_id:
                             _log.info("P2 skip %s (has take)", cid)
-                            await _mark_stage(cid, "p2", "ok")
+                            await _mark_stage(cid, "p2", "ok", context={"skipped": True, "reason": "has selected_take"})
                             continue
+                    # Read chunk text for context
+                    async with _session_factory() as _s:
+                        _chunk = await ChunkRepo(_s).get(cid)
+                        _text = _chunk.text_normalized if _chunk else ""
                     _log.info("P2 synth %s", cid)
                     t0 = datetime.now(timezone.utc)
                     await _mark_stage(cid, "p2", "running", started=t0)
                     try:
-                        await run_p2_synth(cid, params=p2_params)
-                        await _mark_stage(cid, "p2", "ok", started=t0)
+                        p2_result = await run_p2_synth(cid, params=p2_params)
+                        await _mark_stage(cid, "p2", "ok", started=t0, context={
+                            "request": {
+                                "text": _text[:100],
+                                **(p2_params if isinstance(p2_params, dict) else {}),
+                            },
+                            "response": {
+                                "takeId": p2_result.take_id,
+                                "audioUri": p2_result.audio_uri,
+                                "durationS": p2_result.duration_s,
+                            },
+                        })
                     except Exception as e:
-                        await _mark_stage(cid, "p2", "failed", error=str(e), started=t0)
+                        await _mark_stage(cid, "p2", "failed", error=str(e), started=t0, context={
+                            "request": {"text": _text[:100], **(p2_params if isinstance(p2_params, dict) else {})},
+                        })
                         raise
 
                 # P3: transcribe
@@ -476,8 +504,11 @@ async def run_episode(
                     t0 = datetime.now(timezone.utc)
                     await _mark_stage(cid, "p3", "running", started=t0)
                     try:
-                        await run_p3_transcribe(cid)
-                        await _mark_stage(cid, "p3", "ok", started=t0)
+                        p3_result = await run_p3_transcribe(cid)
+                        await _mark_stage(cid, "p3", "ok", started=t0, context={
+                            "request": {"whisperxUrl": os.environ.get("WHISPERX_URL", "http://localhost:7860")},
+                            "response": {"transcriptUri": p3_result.transcript_uri, "wordCount": p3_result.word_count},
+                        })
                     except Exception as e:
                         await _mark_stage(cid, "p3", "failed", error=str(e), started=t0)
                         raise
@@ -489,8 +520,10 @@ async def run_episode(
                     t0 = datetime.now(timezone.utc)
                     await _mark_stage(cid, "p5", "running", started=t0)
                     try:
-                        await run_p5_subtitles(cid)
-                        await _mark_stage(cid, "p5", "ok", started=t0)
+                        p5_result = await run_p5_subtitles(cid)
+                        await _mark_stage(cid, "p5", "ok", started=t0, context={
+                            "response": {"subtitleUri": p5_result.subtitle_uri, "lineCount": p5_result.line_count},
+                        })
                     except Exception as e:
                         await _mark_stage(cid, "p5", "failed", error=str(e), started=t0)
                         raise
@@ -817,6 +850,33 @@ async def get_chunk_log(
         stage=stage,
         chunk_id=chunk_id,
     )
+
+
+# ---------------------------------------------------------------------------
+# GET /episodes/{id}/chunks/{cid}/stage-context?stage=p2
+# ---------------------------------------------------------------------------
+
+
+@router.get("/episodes/{episode_id}/chunks/{chunk_id}/stage-context")
+async def get_stage_context(
+    episode_id: str,
+    chunk_id: str,
+    stage: str = Query(...),
+    session: AsyncSession = Depends(get_session),
+) -> dict:
+    """Return the latest execution context (request/response params) for a stage.
+
+    Reads from events table — the stage_ok/stage_failed event payload
+    written by dev runner with request/response context.
+    """
+    event_repo = EventRepo(session)
+    events = await event_repo.list_recent(episode_id, limit=50)
+    # Find the most recent stage_ok or stage_failed for this chunk+stage
+    for ev in reversed(events):
+        if ev.chunk_id == chunk_id and ev.payload.get("stage") == stage:
+            if ev.kind in ("stage_ok", "stage_failed"):
+                return {"found": True, "kind": ev.kind, "payload": ev.payload, "createdAt": str(ev.created_at)}
+    return {"found": False}
 
 
 # ---------------------------------------------------------------------------

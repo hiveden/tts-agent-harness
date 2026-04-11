@@ -1,9 +1,11 @@
 "use client";
 
-import { useEffect, useCallback, useState } from "react";
-import type { StageName } from "@/lib/types";
+import { useEffect, useCallback, useState, useMemo } from "react";
+import useSWR from "swr";
+import type { Episode, StageName } from "@/lib/types";
 import { useHarnessStore } from "@/lib/store";
 import { useEpisodes, useEpisode, useEpisodeLogs, getAudioUrl } from "@/lib/hooks";
+import { getApiUrl } from "@/lib/api-client";
 
 import { EpisodeSidebar } from "@/components/EpisodeSidebar";
 import { EpisodeHeader } from "@/components/EpisodeHeader";
@@ -185,28 +187,55 @@ export default function Page() {
       <HelpDialog open={store.helpOpen} onClose={() => store.setHelpOpen(false)} />
 
       {/* Stage Log Drawer */}
-      {store.drawerOpen && store.selectedId && episode && (() => {
-        const chunk = episode.chunks.find(c => c.id === store.drawerOpen!.cid);
-        const stageRun = chunk?.stageRuns.find(sr => sr.stage === store.drawerOpen!.stage);
-        return (
-          <StageLogDrawer
-            open
-            onClose={store.closeDrawer}
-            chunkId={store.drawerOpen.cid}
-            stage={store.drawerOpen.stage}
-            stageRun={stageRun}
-            log=""
-            logLoading={false}
-            logError={null}
-            onRetry={async (cascade) => {
-              await store.retryChunk(store.selectedId!, store.drawerOpen!.cid, store.drawerOpen!.stage, cascade);
-              await mutateDetail();
-              store.closeDrawer();
-            }}
-          />
-        );
-      })()}
+      {store.drawerOpen && store.selectedId && episode && <DrawerWithContext
+        episodeId={store.selectedId}
+        episode={episode}
+        drawerOpen={store.drawerOpen}
+        onClose={store.closeDrawer}
+        onRetry={async (cascade) => {
+          await store.retryChunk(store.selectedId!, store.drawerOpen!.cid, store.drawerOpen!.stage, cascade);
+          await mutateDetail();
+          store.closeDrawer();
+        }}
+      />}
     </div>
   );
 }
 
+
+// Wrapper that fetches stage context for the drawer
+function DrawerWithContext({ episodeId, episode, drawerOpen, onClose, onRetry }: {
+  episodeId: string;
+  episode: Episode;
+  drawerOpen: { cid: string; stage: StageName };
+  onClose: () => void;
+  onRetry: (cascade: boolean) => Promise<void>;
+}) {
+  const { data: ctxData } = useSWR(
+    `api:stage-context:${episodeId}:${drawerOpen.cid}:${drawerOpen.stage}`,
+    async () => {
+      const r = await fetch(`${getApiUrl()}/episodes/${encodeURIComponent(episodeId)}/chunks/${encodeURIComponent(drawerOpen.cid)}/stage-context?stage=${encodeURIComponent(drawerOpen.stage)}`);
+      if (!r.ok) return null;
+      const d = await r.json();
+      return d.found ? d.payload : null;
+    },
+  );
+
+  const chunk = episode.chunks.find(c => c.id === drawerOpen.cid);
+  const stageRun = chunk?.stageRuns.find(sr => sr.stage === drawerOpen.stage);
+
+  return (
+    <StageLogDrawer
+      open
+      onClose={onClose}
+      chunkId={drawerOpen.cid}
+      stage={drawerOpen.stage}
+      stageRun={stageRun}
+      log=""
+      logLoading={false}
+      logError={null}
+      context={ctxData ?? null}
+      onRetry={onRetry}
+    />
+  );
+}

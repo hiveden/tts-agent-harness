@@ -3,6 +3,13 @@
 import type { StageName, StageRun } from "@/lib/types";
 import { Sheet, SheetContent, SheetHeader, SheetClose } from "@/components/ui/sheet";
 
+interface StageContext {
+  request?: Record<string, unknown>;
+  response?: Record<string, unknown>;
+  skipped?: boolean;
+  reason?: string;
+}
+
 interface Props {
   open: boolean;
   onClose: () => void;
@@ -12,6 +19,7 @@ interface Props {
   log: string;
   logLoading: boolean;
   logError: string | null;
+  context: StageContext | null;
   onRetry: (cascade: boolean) => void;
   retrying?: boolean;
 }
@@ -39,7 +47,7 @@ function statusBadge(sr: StageRun | undefined) {
  */
 export function StageLogDrawer({
   open, onClose, chunkId, stage, stageRun,
-  log, logLoading, logError, onRetry, retrying = false,
+  log, logLoading, logError, context, onRetry, retrying = false,
 }: Props) {
   const attempt = stageRun?.attempt ?? 0;
   const durationMs = stageRun?.durationMs;
@@ -87,6 +95,31 @@ export function StageLogDrawer({
               </div>
             ) : (
               <div className="text-neutral-400 text-center mt-8">暂无信息</div>
+            )}
+            {context && !context.skipped && (
+              <div className="mt-4 space-y-3">
+                {context.request && (
+                  <div>
+                    <div className="text-neutral-500 font-semibold text-[11px] mb-1">Request 参数</div>
+                    <pre className="text-[10px] font-mono bg-neutral-100 rounded p-2 whitespace-pre-wrap overflow-auto max-h-40">
+                      {JSON.stringify(context.request, null, 2)}
+                    </pre>
+                  </div>
+                )}
+                {context.response && (
+                  <div>
+                    <div className="text-neutral-500 font-semibold text-[11px] mb-1">Response 产物</div>
+                    <pre className="text-[10px] font-mono bg-neutral-100 rounded p-2 whitespace-pre-wrap overflow-auto max-h-40">
+                      {JSON.stringify(context.response, null, 2)}
+                    </pre>
+                  </div>
+                )}
+              </div>
+            )}
+            {context?.skipped && (
+              <div className="mt-4 text-xs text-neutral-500">
+                ⏭ 已跳过 — {context.reason ?? "已有 selected_take"}
+              </div>
             )}
           </div>
         )}
