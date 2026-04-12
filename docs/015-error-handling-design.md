@@ -140,26 +140,24 @@ def format_error(exc: Exception, max_length: int = 500) -> str:
 
 ### Toast 替代 alert()
 
-新增 `ToastProvider` 组件，替代所有 `alert()` 调用：
+使用 **sonner**（shadcn/ui 推荐的 toast 库）：
+
+```bash
+pnpm add sonner
+```
 
 ```typescript
-// lib/toast.ts
-type ToastLevel = "info" | "success" | "warning" | "error";
+// layout.tsx
+import { Toaster } from "sonner";
+// <Toaster position="bottom-right" />
 
-interface Toast {
-  id: string;
-  level: ToastLevel;
-  title: string;
-  detail?: string;
-  duration?: number;  // auto-dismiss ms, 0 = manual
-}
-
-// 使用
-toast.error("P2 合成失败", error.message);
+// 使用（任意组件内）
+import { toast } from "sonner";
+toast.error("P2 合成失败", { description: error.message });
 toast.success("配置已保存");
 ```
 
-样式：右下角堆叠，自动消失（error 不自动消失）。
+不需要自建 Toast 组件。
 
 ### SWR 错误统一处理
 
@@ -173,43 +171,25 @@ toast.success("配置已保存");
 
 ### API 调用错误统一处理
 
-`hooks.ts` 中的 imperative 函数（createEpisode/retryChunk 等）：
+openapi-fetch 已经返回结构化 `error` 对象，不需要自建 ApiError。
+
+page.tsx 的 `withRefresh` wrapper 用 sonner toast：
 
 ```typescript
-// 现有：throw new Error(String(error))
-// 改为：throw 结构化错误
+import { toast } from "sonner";
 
-class ApiError extends Error {
-  code: string;
-  detail: string;
-  context?: Record<string, unknown>;
-
-  constructor(response: { error: string; detail: string; context?: unknown }) {
-    super(response.detail);
-    this.code = response.error;
-    this.detail = response.detail;
-    this.context = response.context as Record<string, unknown>;
-  }
-}
-```
-
-page.tsx 的 `withRefresh` wrapper 统一捕获并 toast：
-
-```typescript
 const withRefresh = (fn) => async (...args) => {
   try {
     await fn(...args);
     await mutateDetail();
     await mutateList();
   } catch (e) {
-    if (e instanceof ApiError) {
-      toast.error(e.code, e.detail);
-    } else {
-      toast.error("操作失败", (e as Error).message);
-    }
+    toast.error("操作失败", { description: (e as Error).message });
   }
 };
 ```
+
+全局替换 `alert(...)` → `toast.error(...)`。
 
 ### 内联错误状态
 
