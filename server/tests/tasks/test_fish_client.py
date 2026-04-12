@@ -170,7 +170,7 @@ async def test_synthesize_timeout_bubbles_up():
 
     client = _make_client(handler)
     try:
-        with pytest.raises(httpx.TimeoutException):
+        with pytest.raises(FishClientError, match="TimeoutException"):
             await client.synthesize("hello", FishTTSParams())
     finally:
         await client.aclose()

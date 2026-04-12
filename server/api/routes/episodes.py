@@ -492,7 +492,14 @@ async def run_episode(
                             },
                         })
                     except Exception as e:
-                        err_msg = f"{type(e).__name__}: {e}"
+                        import traceback
+                        # Include cause chain for actionable diagnostics
+                        cause = e.__cause__ or e.__context__
+                        cause_info = f" ← {type(cause).__name__}: {cause}" if cause else ""
+                        err_msg = f"{type(e).__name__}: {e}{cause_info}"
+                        # Truncate but keep enough for debugging
+                        if len(err_msg) > 500:
+                            err_msg = err_msg[:500] + "..."
                         _log.error("P2 failed %s: %s", cid, err_msg)
                         await _mark_stage(cid, "p2", "failed", error=err_msg, started=t0, context={
                             "request": {"text": _text[:100], **(p2_params if isinstance(p2_params, dict) else {})},

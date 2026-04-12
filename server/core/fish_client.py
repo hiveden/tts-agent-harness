@@ -163,8 +163,13 @@ class FishTTSClient:
         }
         payload = self.build_payload(text, params)
 
-        async with self._client() as http:
-            response = await http.post(self._url, json=payload, headers=headers)
+        try:
+            async with self._client() as http:
+                response = await http.post(self._url, json=payload, headers=headers)
+        except Exception as exc:
+            raise FishClientError(
+                f"Failed to connect to Fish TTS at {self._url}: {type(exc).__name__}: {exc}",
+            ) from exc
 
         return self._handle_response(response)
 
