@@ -169,7 +169,7 @@ export default function Page() {
                       onSynthesize={async (cid) => {
                         setSynthesizingCid(cid);
                         try {
-                          await store.retryChunk(episode.id, cid, "p2", true);
+                          await store.retryChunk(episode.id, cid, "p2", false);
                           await mutateDetail();
                           // Auto-play after synthesis
                           store.togglePlay(cid);
