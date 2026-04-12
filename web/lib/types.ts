@@ -60,6 +60,7 @@ export interface Chunk {
   metadata: Record<string, unknown>;
   takes: Take[];
   stageRuns: StageRun[];
+  attemptHistory?: AttemptRecord[];
 }
 
 // ===== Episode (backend: EpisodeDetail) =====
@@ -108,6 +109,35 @@ export interface StageEvent {
   chunkId?: string;
   kind: string;
   payload: Record<string, unknown>;
+}
+
+// ===== P2v Verify Scores =====
+export interface VerifyScores {
+  durationRatio: number;
+  silence: number;
+  phoneticDistance: number;
+  charRatio: number;
+  asrConfidence: number;
+  weightedScore: number;
+}
+
+// ===== Attempt Record =====
+export interface AttemptRecord {
+  attempt: number;
+  level: number;
+  verdict: "pass" | "fail";
+  scores: VerifyScores;
+  diagnosis?: {
+    type?: string;
+    missing?: string[];
+    extra?: string[];
+    lowConfidenceWords?: string[];
+  };
+  params: Record<string, unknown>;
+  textUsed: string;
+  transcribedText: string;
+  durationMs: number;
+  timestamp: string;
 }
 
 // ===== Helpers =====

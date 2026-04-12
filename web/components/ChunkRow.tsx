@@ -5,6 +5,7 @@ import type { Chunk, ChunkEdit, ChunkStatus, StageName } from "@/lib/types";
 import { getDisplaySubtitle, stripControlMarkers } from "@/lib/utils";
 // getAudioUrl passed via props — component must not import hooks
 import { KaraokeSubtitle } from "./KaraokeSubtitle";
+import { RetryRow } from "./RetryRow";
 import { StagePipeline } from "./StagePipeline";
 import { TakeSelector } from "./TakeSelector";
 
@@ -225,6 +226,19 @@ export function ChunkRow({
             onUse={onUseTake}
           />
         ) : null}
+        {chunk.attemptHistory && chunk.attemptHistory.length > 0 && (
+          <div className="mt-1 border border-neutral-200 rounded overflow-hidden">
+            {chunk.attemptHistory.map((att, i) => (
+              <RetryRow
+                key={`${att.attempt}-${att.timestamp}`}
+                attempt={att}
+                attemptIndex={i + 1}
+                isCurrent={i === chunk.attemptHistory!.length - 1 && att.verdict === "pass"}
+                onStageClick={onStageClick}
+              />
+            ))}
+          </div>
+        )}
         {audioUrl ? (
           <audio
             key={audioUrl}

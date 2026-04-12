@@ -1,3 +1,4 @@
 whisperx>=3.1.0
 torch>=2.0
 torchaudio>=2.0
+pypinyin>=0.50
