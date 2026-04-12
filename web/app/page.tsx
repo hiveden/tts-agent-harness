@@ -37,7 +37,9 @@ export default function Page() {
 
   // --- Derived ---
   const running = episode?.status === "running";
-  const failedCount = episode?.chunks.filter((c) => c.status === "failed").length ?? 0;
+  const failedCount = episode?.chunks.filter((c) =>
+    c.status === "failed" || c.stageRuns.some((sr) => sr.status === "failed")
+  ).length ?? 0;
   const dirtyCount = store.dirtyCount();
 
   // --- Mutate helpers (bridge store actions → SWR refresh) ---

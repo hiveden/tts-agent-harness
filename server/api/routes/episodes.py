@@ -464,7 +464,35 @@ async def run_episode(
                 else:
                     target_ids = [c.id for c in target]
 
-                # P2: synthesize only chunks without selected_take (D-05)
+                # --- Helpers ---
+                import asyncio as _aio
+
+                async def _retry(fn, *args, retries=3, backoff=(2, 4, 8), **kwargs):
+                    """Retry with exponential backoff."""
+                    last = None
+                    for attempt in range(1, retries + 1):
+                        try:
+                            return await fn(*args, **kwargs)
+                        except Exception as e:
+                            last = e
+                            if attempt < retries:
+                                delay = backoff[min(attempt - 1, len(backoff) - 1)]
+                                _log.warning("Retry %d/%d for %s: %s (wait %ds)", attempt, retries, fn.__name__, e, delay)
+                                await _aio.sleep(delay)
+                    raise last  # type: ignore[misc]
+
+                def _fmt_err(e: Exception) -> str:
+                    msg = f"{type(e).__name__}: {e}" if str(e).strip() else type(e).__name__
+                    return msg[:500] + "..." if len(msg) > 500 else msg
+
+                async def _set_chunk_failed(cid: str, error: str):
+                    async with _session_factory() as _s:
+                        await ChunkRepo(_s).set_status(cid, "failed")
+                        await _s.commit()
+
+                failed_chunks: set[str] = set()
+
+                # --- P2: synthesize (with retry, fault-isolated) ---
                 from server.flows.tasks.p2_synth import run_p2_synth
                 p2_params = tts_config if tts_config else None
                 for cid in target_ids:
@@ -474,7 +502,6 @@ async def run_episode(
                             _log.info("P2 skip %s (has take)", cid)
                             await _mark_stage(cid, "p2", "ok", context={"skipped": True, "reason": "has selected_take"})
                             continue
-                    # Read chunk text for context
                     async with _session_factory() as _s:
                         _chunk = await ChunkRepo(_s).get(cid)
                         _text = _chunk.text_normalized if _chunk else ""
@@ -482,58 +509,65 @@ async def run_episode(
                     t0 = datetime.now(timezone.utc)
                     await _mark_stage(cid, "p2", "running", started=t0)
                     try:
-                        p2_result = await run_p2_synth(cid, params=p2_params)
+                        p2_result = await _retry(run_p2_synth, cid, params=p2_params)
                         await _mark_stage(cid, "p2", "ok", started=t0, context={
-                            "request": {
-                                "text": _text[:100],
-                                **(p2_params if isinstance(p2_params, dict) else {}),
-                            },
-                            "response": {
-                                "takeId": p2_result.take_id,
-                                "audioUri": p2_result.audio_uri,
-                                "durationS": p2_result.duration_s,
-                            },
+                            "request": {"text": _text[:100], **(p2_params if isinstance(p2_params, dict) else {})},
+                            "response": {"takeId": p2_result.take_id, "audioUri": p2_result.audio_uri, "durationS": p2_result.duration_s},
                         })
                     except Exception as e:
-                        # Build actionable error message
-                        err_msg = f"{type(e).__name__}: {e}" if str(e).strip() else type(e).__name__
-                        # Truncate but keep enough for debugging
-                        if len(err_msg) > 500:
-                            err_msg = err_msg[:500] + "..."
+                        err_msg = _fmt_err(e)
                         _log.error("P2 failed %s: %s", cid, err_msg)
                         await _mark_stage(cid, "p2", "failed", error=err_msg, started=t0, context={
                             "request": {"text": _text[:100], **(p2_params if isinstance(p2_params, dict) else {})},
                         })
-                        # Double-write: ensure StageRun.error is persisted even if
-                        # the P2 task's internal upsert ran without the error field.
-                        try:
-                            async with _session_factory() as _es:
-                                from server.core.repositories import StageRunRepo as _SR
-                                await _SR(_es).upsert(chunk_id=cid, stage="p2", status="failed", error=err_msg)
-                                await _es.commit()
-                        except Exception:
-                            pass
-                        raise
+                        await _set_chunk_failed(cid, err_msg)
+                        failed_chunks.add(cid)
+                        continue  # Don't block other chunks
 
-                # P2c: WAV format check
+                # --- P2c: format check (skip failed) ---
                 from server.flows.tasks.p2c_check import run_p2c_check
                 for cid in target_ids:
+                    if cid in failed_chunks:
+                        continue
+                    # Skip chunks without take (P2 was skipped but already verified)
+                    async with _session_factory() as _s:
+                        _ch = await ChunkRepo(_s).get(cid)
+                        if not _ch or not _ch.selected_take_id:
+                            continue
+                        if _ch.status not in ("synth_done", "verified"):
+                            continue
                     _log.info("P2c check %s", cid)
                     t0 = datetime.now(timezone.utc)
                     await _mark_stage(cid, "p2c", "running", started=t0)
                     try:
                         p2c_result = await run_p2c_check(cid)
-                        await _mark_stage(cid, "p2c", "ok", started=t0, context={
-                            "response": p2c_result if isinstance(p2c_result, dict) else {"status": "ok"},
-                        })
+                        p2c_status = p2c_result.get("status", "ok") if isinstance(p2c_result, dict) else "ok"
+                        if p2c_status == "failed":
+                            err_msg = "; ".join(p2c_result.get("errors", []))
+                            await _mark_stage(cid, "p2c", "failed", error=err_msg, started=t0)
+                            await _set_chunk_failed(cid, err_msg)
+                            failed_chunks.add(cid)
+                        else:
+                            await _mark_stage(cid, "p2c", "ok", started=t0, context={
+                                "response": p2c_result if isinstance(p2c_result, dict) else {"status": "ok"},
+                            })
                     except Exception as e:
-                        err_msg = f"{type(e).__name__}: {e}" if str(e).strip() else type(e).__name__
+                        err_msg = _fmt_err(e)
+                        _log.error("P2c failed %s: %s", cid, err_msg)
                         await _mark_stage(cid, "p2c", "failed", error=err_msg, started=t0)
-                        raise
+                        await _set_chunk_failed(cid, err_msg)
+                        failed_chunks.add(cid)
+                        continue
 
-                # P2v: ASR verify
+                # --- P2v: ASR verify (skip failed) ---
                 from server.flows.tasks.p2v_verify import run_p2v_verify
                 for cid in target_ids:
+                    if cid in failed_chunks:
+                        continue
+                    async with _session_factory() as _s:
+                        _ch = await ChunkRepo(_s).get(cid)
+                        if not _ch or _ch.status not in ("synth_done", "verified"):
+                            continue
                     _log.info("P2v verify %s", cid)
                     t0 = datetime.now(timezone.utc)
                     await _mark_stage(cid, "p2v", "running", started=t0)
@@ -543,13 +577,22 @@ async def run_episode(
                             "response": {"verdict": p2v_result.verdict, "charRatio": p2v_result.char_ratio, "transcriptUri": p2v_result.transcript_uri},
                         })
                     except Exception as e:
-                        err_msg = f"{type(e).__name__}: {e}" if str(e).strip() else type(e).__name__
+                        err_msg = _fmt_err(e)
+                        _log.error("P2v failed %s: %s", cid, err_msg)
                         await _mark_stage(cid, "p2v", "failed", error=err_msg, started=t0)
-                        raise
+                        await _set_chunk_failed(cid, err_msg)
+                        failed_chunks.add(cid)
+                        continue
 
-                # P5: subtitles
+                # --- P5: subtitles (only verified chunks) ---
                 from server.flows.tasks.p5_subtitles import run_p5_subtitles
                 for cid in target_ids:
+                    if cid in failed_chunks:
+                        continue
+                    async with _session_factory() as _s:
+                        _ch = await ChunkRepo(_s).get(cid)
+                        if not _ch or _ch.status != "verified":
+                            continue
                     _log.info("P5 subtitle %s", cid)
                     t0 = datetime.now(timezone.utc)
                     await _mark_stage(cid, "p5", "running", started=t0)
@@ -559,25 +602,33 @@ async def run_episode(
                             "response": {"subtitleUri": p5_result.subtitle_uri, "lineCount": p5_result.line_count},
                         })
                     except Exception as e:
-                        await _mark_stage(cid, "p5", "failed", error=str(e), started=t0)
-                        raise
+                        err_msg = _fmt_err(e)
+                        await _mark_stage(cid, "p5", "failed", error=err_msg, started=t0)
+                        await _set_chunk_failed(cid, err_msg)
+                        failed_chunks.add(cid)
+                        continue
 
-                # P6: concat
+                # --- P6: concat (all verified chunks) ---
                 from server.flows.tasks.p6_concat import run_p6_concat
                 async with _session_factory() as sess:
                     _log.info("P6 concat %s", episode_id)
                     await run_p6_concat(episode_id, session=sess, storage=_storage)
 
-                # Mark done
+                # --- Episode final status ---
                 async with _session_factory() as sess:
-                    await EpisodeRepo(sess).set_status(episode_id, "done")
+                    final_chunks = await ChunkRepo(sess).list_by_episode(episode_id)
+                    has_failed = any(c.status == "failed" for c in final_chunks)
+                    if has_failed:
+                        await EpisodeRepo(sess).set_status(episode_id, "failed")
+                        _log.info("Episode %s → failed (%d chunk failures)", episode_id, len(failed_chunks))
+                    else:
+                        await EpisodeRepo(sess).set_status(episode_id, "done")
+                        _log.info("Episode %s → done", episode_id)
                     await sess.commit()
-                _log.info("Episode %s → done", episode_id)
 
             except Exception as exc:
                 import logging
                 logging.getLogger("dev_runner").error("flow failed: %s", exc, exc_info=True)
-                # Mark failed
                 try:
                     async with _session_factory() as sess:
                         await EpisodeRepo(sess).set_status(episode_id, "failed")
