@@ -671,7 +671,7 @@ async def retry_chunk(
             from server.flows.worker_bootstrap import _session_factory
             _log = logging.getLogger("dev_retry")
             try:
-                STAGE_ORDER = ["p2", "p3", "p5"]
+                STAGE_ORDER = ["p2", "p2c", "p2v", "p5"]
                 start_idx = STAGE_ORDER.index(from_stage) if from_stage in STAGE_ORDER else 0
                 stages_to_run = STAGE_ORDER[start_idx:] if cascade else [from_stage]
 
@@ -709,11 +709,24 @@ async def retry_chunk(
                                 "request": {"text": _text[:100], **(tts_config if isinstance(tts_config, dict) else {})},
                                 "response": {"takeId": result.take_id, "audioUri": result.audio_uri, "durationS": result.duration_s},
                             })
-                        elif stage == "p3":
-                            from server.flows.tasks.p3_transcribe import run_p3_transcribe
-                            result = await run_p3_transcribe(chunk_id)
+                        elif stage == "p2c":
+                            from server.flows.tasks.p2c_check import run_p2c_check
+                            result = await run_p2c_check(chunk_id)
                             await _mark(stage, "ok", started=t0, context={
-                                "response": {"transcriptUri": result.transcript_uri, "wordCount": result.word_count},
+                                "response": result if isinstance(result, dict) else {"status": "ok"},
+                            })
+                        elif stage == "p2v":
+                            from server.flows.tasks.p2v_verify import run_p2v_verify
+                            result = await run_p2v_verify(chunk_id)
+                            await _mark(stage, "ok", started=t0, context={
+                                "response": {"verdict": result.verdict, "charRatio": result.char_ratio, "transcriptUri": result.transcript_uri},
+                            })
+                        elif stage == "p3":
+                            # Legacy fallback — map to p2v
+                            from server.flows.tasks.p2v_verify import run_p2v_verify
+                            result = await run_p2v_verify(chunk_id)
+                            await _mark("p2v", "ok", started=t0, context={
+                                "response": {"verdict": result.verdict, "charRatio": result.char_ratio},
                             })
                         elif stage == "p5":
                             from server.flows.tasks.p5_subtitles import run_p5_subtitles
@@ -723,8 +736,9 @@ async def retry_chunk(
                             })
                         _log.info("retry %s %s → ok", chunk_id, stage)
                     except Exception as e:
-                        await _mark(stage, "failed", error=str(e), started=t0)
-                        _log.error("retry %s %s → failed: %s", chunk_id, stage, e)
+                        err_msg = f"{type(e).__name__}: {e}" if str(e).strip() else type(e).__name__
+                        await _mark(stage, "failed", error=err_msg, started=t0)
+                        _log.error("retry %s %s → failed: %s", chunk_id, stage, err_msg)
                         break
             except Exception as exc:
                 import logging
