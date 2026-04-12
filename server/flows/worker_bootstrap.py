@@ -81,11 +81,20 @@ def bootstrap() -> None:
         fish_client_factory=_fish_factory,
     )
 
-    # Wire P3.
+    # Wire P3 (kept for backward compat).
     from server.flows.tasks.p3_transcribe import configure_p3_dependencies
 
     whisperx_url = _env("WHISPERX_URL", "http://whisperx-svc:7860")
     configure_p3_dependencies(
+        session_factory=_session_factory,
+        storage=_storage,
+        whisperx_url=whisperx_url,
+    )
+
+    # Wire P2v (verify = ASR + quality gate).
+    from server.flows.tasks.p2v_verify import configure_p2v_dependencies
+
+    configure_p2v_dependencies(
         session_factory=_session_factory,
         storage=_storage,
         whisperx_url=whisperx_url,

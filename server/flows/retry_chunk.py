@@ -3,13 +3,14 @@
 Supports two modes:
 
 - ``cascade=True`` (default): run from ``from_stage`` through all
-  downstream stages. E.g. ``from_stage="p2"`` runs P2 → P3 → P5;
+  downstream stages. E.g. ``from_stage="p2"`` runs P2 → P2v → P5;
   P6 is NOT included because it is per-episode, not per-chunk.
 
 - ``cascade=False``: run only ``from_stage``, then mark downstream
   ``stage_runs`` as ``stale`` so the operator knows they need re-running.
 
-Stage ordering: p2 → p3 → p5 (per-chunk stages only).
+Stage ordering: p2 → p2v → p5 (per-chunk stages only).
+``p3`` is accepted as an alias for ``p2v`` for backward compatibility.
 P1 is per-episode and is not retryable via this flow.
 P6 is per-episode and must be triggered separately after all chunks are ready.
 """
@@ -21,12 +22,15 @@ from datetime import datetime, timezone
 
 from prefect import flow
 
-from server.core.domain import P2Result, P3Result, P5Result
+from server.core.domain import P2Result, P2vResult, P5Result
 
 log = logging.getLogger(__name__)
 
 # Ordered list of per-chunk stages.
-CHUNK_STAGES = ["p2", "p3", "p5"]
+CHUNK_STAGES = ["p2", "p2v", "p5"]
+
+# Backward-compat alias: callers using "p3" get mapped to "p2v".
+_STAGE_ALIASES = {"p3": "p2v"}
 
 
 @flow(name="retry-chunk-stage")
@@ -53,6 +57,9 @@ async def retry_chunk_stage_flow(
     language
         Language code for P3.
     """
+    # Map legacy aliases (e.g. "p3" -> "p2v").
+    from_stage = _STAGE_ALIASES.get(from_stage, from_stage)
+
     if from_stage not in CHUNK_STAGES:
         raise ValueError(
             f"from_stage must be one of {CHUNK_STAGES}, got {from_stage!r}"
@@ -73,11 +80,11 @@ async def retry_chunk_stage_flow(
 
             result: P2Result = await p2_synth(cid)
             results["p2"] = result
-        elif stage == "p3":
-            from server.flows.tasks.p3_transcribe import p3_transcribe
+        elif stage == "p2v":
+            from server.flows.tasks.p2v_verify import p2v_verify
 
-            result: P3Result = await p3_transcribe(cid, language=language)
-            results["p3"] = result
+            result: P2vResult = await p2v_verify(cid, language=language)
+            results["p2v"] = result
         elif stage == "p5":
             from server.flows.tasks.p5_subtitles import p5_subtitles
 
@@ -99,7 +106,7 @@ async def _mark_downstream_stale(chunk_id: str, stages: list[str]) -> None:
 
     This is a best-effort operation using the module-level DI pattern.
     """
-    from server.flows.tasks.p3_transcribe import _require_deps, _session_scope
+    from server.flows.tasks.p2v_verify import _require_deps, _session_scope
 
     try:
         session_factory, _ = _require_deps()

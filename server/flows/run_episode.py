@@ -2,13 +2,13 @@
 
 Supports multiple run modes (D-03 product design):
 - "chunk_only": Only P1 (split script into chunks)
-- "synthesize": P2→P3→P5→P6, skipping chunks with selected_take (D-05)
+- "synthesize": P2→P2v→P5→P6, skipping chunks with selected_take (D-05)
 - "retry_failed": Only re-run failed chunks from their failed stage
-- "regenerate": Clear all, re-run P1→P2→P3→P5→P6
+- "regenerate": Clear all, re-run P1→P2→P2v→P5→P6
 
 Status transitions:
   episode: empty → ready (P1) → running → done (P6)
-  chunk: pending → synth_done (P2) → transcribed (P3)
+  chunk: pending → synth_done (P2) → verified (P2v)
 """
 
 from __future__ import annotations
@@ -23,7 +23,8 @@ from server.flows.tasks.p1_chunk import P1Context, p1_chunk
 from server.flows.tasks.p1c_check import p1c_check
 from server.flows.tasks.p2_synth import p2_synth
 from server.flows.tasks.p2c_check import p2c_check
-from server.flows.tasks.p3_transcribe import p3_transcribe
+from server.flows.tasks.p2v_verify import p2v_verify
+from server.flows.tasks.p3_transcribe import p3_transcribe  # kept for backward compat
 from server.flows.tasks.p5_subtitles import p5_subtitles
 from server.flows.tasks.p6_concat import p6_concat
 from server.flows.tasks.p6v_check import p6v_check
@@ -135,10 +136,12 @@ async def _run_synthesize(
     [await f.result() for f in p2c_futures]
     log.info("P2c complete: %d WAVs validated", len(p2c_ids))
 
-    # P3: transcribe all target chunks (even if P2 was skipped — transcript may need refresh)
-    p3_futures = p3_transcribe.map(all_ids, [language] * len(all_ids))
-    [await f.result() for f in p3_futures]
-    log.info("P3 complete: %d transcripts", len(all_ids))
+    # P2v: ASR transcribe + quality verify (replaces P3 + check3)
+    p2v_futures = p2v_verify.map(all_ids, [language] * len(all_ids))
+    p2v_results = [await f.result() for f in p2v_futures]
+    passed = sum(1 for r in p2v_results if r.verdict == "pass")
+    failed = sum(1 for r in p2v_results if r.verdict == "fail")
+    log.info("P2v complete: %d passed, %d failed out of %d", passed, failed, len(all_ids))
 
     # P5: subtitles for all target chunks
     p5_futures = p5_subtitles.map(all_ids)
@@ -197,7 +200,7 @@ async def _run_retry_failed(
     p1c_futures = p1c_check.map(failed_ids)
     [await f.result() for f in p1c_futures]
 
-    # Re-run P2→P2c→P3→P5 for failed chunks, using episode.config
+    # Re-run P2→P2c→P2v→P5 for failed chunks, using episode.config
     p2_params = tts_config if tts_config else None
     p2_futures = p2_synth.map(failed_ids, [p2_params] * len(failed_ids))
     [await f.result() for f in p2_futures]
@@ -205,8 +208,8 @@ async def _run_retry_failed(
     p2c_futures = p2c_check.map(failed_ids)
     [await f.result() for f in p2c_futures]
 
-    p3_futures = p3_transcribe.map(failed_ids, [language] * len(failed_ids))
-    [await f.result() for f in p3_futures]
+    p2v_futures = p2v_verify.map(failed_ids, [language] * len(failed_ids))
+    [await f.result() for f in p2v_futures]
 
     p5_futures = p5_subtitles.map(failed_ids)
     [await f.result() for f in p5_futures]
@@ -262,8 +265,8 @@ async def _run_regenerate(
     p2c_futures = p2c_check.map(chunk_ids)
     [await f.result() for f in p2c_futures]
 
-    p3_futures = p3_transcribe.map(chunk_ids, [language] * len(chunk_ids))
-    [await f.result() for f in p3_futures]
+    p2v_futures = p2v_verify.map(chunk_ids, [language] * len(chunk_ids))
+    [await f.result() for f in p2v_futures]
 
     p5_futures = p5_subtitles.map(chunk_ids)
     [await f.result() for f in p5_futures]

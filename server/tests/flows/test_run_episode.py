@@ -58,10 +58,15 @@ from server.core.storage import (
     final_wav_key,
 )
 from server.flows.tasks import p2_synth as p2_module
+from server.flows.tasks import p2v_verify as p2v_module
 from server.flows.tasks import p3_transcribe as p3_module
 from server.flows.tasks import p5_subtitles as p5_module
 from server.flows.tasks.p1_chunk import P1Context
 from server.flows.tasks.p2_synth import configure_p2_dependencies, run_p2_synth
+from server.flows.tasks.p2v_verify import (
+    configure_p2v_dependencies,
+    run_p2v_verify,
+)
 from server.flows.tasks.p3_transcribe import (
     configure_p3_dependencies,
     run_p3_transcribe,
@@ -84,8 +89,11 @@ SAMPLE_SCRIPT = {
 
 SAMPLE_TRANSCRIPT = {
     "transcript": [
-        {"word": "你好", "start": 0.0, "end": 0.3, "score": 0.95},
-        {"word": "世界", "start": 0.3, "end": 0.5, "score": 0.90},
+        {"word": "你好", "start": 0.0, "end": 0.1, "score": 0.95},
+        {"word": "世界", "start": 0.1, "end": 0.2, "score": 0.90},
+        {"word": "这是", "start": 0.2, "end": 0.3, "score": 0.90},
+        {"word": "测试", "start": 0.3, "end": 0.4, "score": 0.90},
+        {"word": "内容", "start": 0.4, "end": 0.5, "score": 0.90},
     ],
     "language": "zh",
     "duration_s": 0.5,
@@ -246,6 +254,13 @@ def wire_all_deps(seeded, storage, fake_fish, monkeypatch):
         whisperx_url="http://test-whisperx:7860",
     )
 
+    configure_p2v_dependencies(
+        session_factory=seeded,
+        storage=storage,
+        http_client_factory=lambda: httpx.AsyncClient(transport=_mock_transport()),
+        whisperx_url="http://test-whisperx:7860",
+    )
+
     configure_p5_dependencies(
         session_factory=seeded,
         storage=storage,
@@ -257,6 +272,9 @@ def wire_all_deps(seeded, storage, fake_fish, monkeypatch):
     p2_module._session_factory = None
     p2_module._storage = None
     p2_module._fish_client_factory = None
+    p2v_module._session_factory = None
+    p2v_module._storage = None
+    p2v_module._http_client_factory = None
     p3_module._session_factory = None
     p3_module._storage = None
     p3_module._http_client_factory = None
@@ -277,7 +295,7 @@ ffmpeg_required = pytest.mark.skipif(
 @ffmpeg_required
 @pytest.mark.asyncio
 async def test_happy_path_full_pipeline(seeded, storage, fake_fish):
-    """Full P1 → P2 → P3 → P5 → P6 flow → episode.status == 'done'."""
+    """Full P1 → P2 → P2v → P5 → P6 flow → episode.status == 'done'."""
     session_factory = seeded
 
     # P1: chunk the script.
@@ -292,9 +310,9 @@ async def test_happy_path_full_pipeline(seeded, storage, fake_fish):
     for cid in chunk_ids:
         await run_p2_synth(cid)
 
-    # P3: transcribe each chunk.
+    # P2v: transcribe + verify each chunk.
     for cid in chunk_ids:
-        await run_p3_transcribe(cid, language="zh")
+        await run_p2v_verify(cid, language="zh")
 
     # P5: subtitles for each chunk.
     for cid in chunk_ids:
@@ -305,7 +323,7 @@ async def test_happy_path_full_pipeline(seeded, storage, fake_fish):
         for cid in chunk_ids:
             chunk = await ChunkRepo(session).get(cid)
             # P5 sets "p5_done" (per A6 convention); we accept either.
-            assert chunk.status in ("transcribed", "p5_done")
+            assert chunk.status in ("verified", "p5_done")
 
     # P6: concat.
     async with session_factory() as session:
@@ -361,8 +379,8 @@ async def test_p2_failure_aborts(seeded, storage):
 
 
 @pytest.mark.asyncio
-async def test_p3_timeout_aborts(seeded, storage, fake_fish):
-    """P3 timeout propagates — flow should abort after P2 succeeds."""
+async def test_p2v_timeout_aborts(seeded, storage, fake_fish):
+    """P2v timeout propagates — flow should abort after P2 succeeds."""
     session_factory = seeded
 
     # P1.
@@ -375,9 +393,9 @@ async def test_p3_timeout_aborts(seeded, storage, fake_fish):
     # P2 succeeds.
     await run_p2_synth(chunk_ids[0])
 
-    # Reconfigure P3 with timeout.
+    # Reconfigure P2v with timeout.
     transport = _mock_transport(raise_exc=httpx.ReadTimeout("timeout"))
-    configure_p3_dependencies(
+    configure_p2v_dependencies(
         session_factory=session_factory,
         storage=storage,
         http_client_factory=lambda: httpx.AsyncClient(transport=transport),
@@ -385,7 +403,7 @@ async def test_p3_timeout_aborts(seeded, storage, fake_fish):
     )
 
     with pytest.raises(httpx.ReadTimeout):
-        await run_p3_transcribe(chunk_ids[0])
+        await run_p2v_verify(chunk_ids[0])
 
     # Chunk should still be synth_done.
     async with session_factory() as session:

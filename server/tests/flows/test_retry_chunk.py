@@ -2,8 +2,8 @@
 
 Scenarios
 ---------
-1. cascade=True: from P2 → runs P2 + P3 + P5.
-2. cascade=False: from P2 → runs only P2, marks P3/P5 stage_runs as stale.
+1. cascade=True: from P2 → runs P2 + P2v + P5.
+2. cascade=False: from P2 → runs only P2, marks P2v/P5 stage_runs as stale.
 """
 
 from __future__ import annotations
@@ -40,12 +40,12 @@ from server.core.repositories import (
     TakeRepo,
 )
 from server.flows.tasks import p2_synth as p2_module
-from server.flows.tasks import p3_transcribe as p3_module
+from server.flows.tasks import p2v_verify as p2v_module
 from server.flows.tasks import p5_subtitles as p5_module
 from server.flows.tasks.p2_synth import configure_p2_dependencies, run_p2_synth
-from server.flows.tasks.p3_transcribe import (
-    configure_p3_dependencies,
-    run_p3_transcribe,
+from server.flows.tasks.p2v_verify import (
+    configure_p2v_dependencies,
+    run_p2v_verify,
 )
 from server.flows.tasks.p5_subtitles import (
     configure_p5_dependencies,
@@ -190,7 +190,7 @@ def wire_deps(seeded, storage, fake_fish, monkeypatch):
         storage=storage,
         fish_client_factory=lambda: fake_fish,
     )
-    configure_p3_dependencies(
+    configure_p2v_dependencies(
         session_factory=seeded,
         storage=storage,
         http_client_factory=lambda: httpx.AsyncClient(transport=_mock_transport()),
@@ -204,9 +204,9 @@ def wire_deps(seeded, storage, fake_fish, monkeypatch):
     p2_module._session_factory = None
     p2_module._storage = None
     p2_module._fish_client_factory = None
-    p3_module._session_factory = None
-    p3_module._storage = None
-    p3_module._http_client_factory = None
+    p2v_module._session_factory = None
+    p2v_module._storage = None
+    p2v_module._http_client_factory = None
     p5_module._session_factory = None
     p5_module._storage = None
 
@@ -227,13 +227,13 @@ async def test_cascade_true_from_p2(seeded, storage):
         chunk = await ChunkRepo(session).get(CHUNK_ID)
         assert chunk.status == "synth_done"
 
-    # Run P3.
-    p3_result = await run_p3_transcribe(CHUNK_ID, language="zh")
-    assert p3_result.chunk_id == CHUNK_ID
+    # Run P2v.
+    p2v_result = await run_p2v_verify(CHUNK_ID, language="zh")
+    assert p2v_result.chunk_id == CHUNK_ID
 
     async with seeded() as session:
         chunk = await ChunkRepo(session).get(CHUNK_ID)
-        assert chunk.status == "transcribed"
+        assert chunk.status == "verified"
 
     # Run P5.
     p5_result = await run_p5_subtitles(CHUNK_ID)
@@ -245,13 +245,13 @@ async def test_cascade_false_marks_stale(seeded, storage):
     """cascade=False from P2: only runs P2, then marks P3/P5 as stale."""
     # First do a full run so stage_runs exist for P3/P5.
     await run_p2_synth(CHUNK_ID)
-    await run_p3_transcribe(CHUNK_ID)
+    await run_p2v_verify(CHUNK_ID)
     await run_p5_subtitles(CHUNK_ID)
 
-    # Create stage_run records for P3 and P5.
+    # Create stage_run records for P2v and P5.
     async with seeded() as session:
         repo = StageRunRepo(session)
-        await repo.upsert(chunk_id=CHUNK_ID, stage="p3", status="ok")
+        await repo.upsert(chunk_id=CHUNK_ID, stage="p2v", status="ok")
         await repo.upsert(chunk_id=CHUNK_ID, stage="p5", status="ok")
         await session.commit()
 
@@ -263,12 +263,12 @@ async def test_cascade_false_marks_stale(seeded, storage):
     downstream = CHUNK_STAGES[CHUNK_STAGES.index("p2") + 1:]
     await _mark_downstream_stale(CHUNK_ID, downstream)
 
-    # Verify P3 and P5 stage_runs are marked stale.
+    # Verify P2v and P5 stage_runs are marked stale.
     async with seeded() as session:
         repo = StageRunRepo(session)
-        p3_run = await repo.get(CHUNK_ID, "p3")
-        assert p3_run is not None
-        assert p3_run.stale is True
+        p2v_run = await repo.get(CHUNK_ID, "p2v")
+        assert p2v_run is not None
+        assert p2v_run.stale is True
         p5_run = await repo.get(CHUNK_ID, "p5")
         assert p5_run is not None
         assert p5_run.stale is True

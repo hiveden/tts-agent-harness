@@ -27,7 +27,7 @@ import httpx
 import pytest
 from sqlalchemy.ext.asyncio import AsyncSession
 
-from server.core.domain import FishTTSParams, P2Result, P3Result, P5Result, P6Result
+from server.core.domain import FishTTSParams, P2Result, P5Result, P6Result
 from server.core.models import Episode
 from server.core.repositories import ChunkRepo, EpisodeRepo, EventRepo
 from server.core.storage import (
@@ -100,9 +100,18 @@ def _wire_task_dependencies(storage: MinIOStorage) -> None:
         fish_client_factory=lambda: FakeFishClient(),
     )
 
-    # P3
+    # P3 (kept for backward compat)
     from server.flows.tasks.p3_transcribe import configure_p3_dependencies
     configure_p3_dependencies(
+        session_factory=maker,
+        storage=storage,
+        http_client_factory=_fake_http_client_factory,
+        whisperx_url="http://fake-whisperx:7860",
+    )
+
+    # P2v (verify = ASR + quality gate)
+    from server.flows.tasks.p2v_verify import configure_p2v_dependencies
+    configure_p2v_dependencies(
         session_factory=maker,
         storage=storage,
         http_client_factory=_fake_http_client_factory,
@@ -185,20 +194,21 @@ async def test_full_pipeline_happy_path(storage: MinIOStorage, db_session: Async
             assert chunk.status == "synth_done"
             assert chunk.selected_take_id is not None
 
-    # --- P3: transcribe (mock WhisperX) ---
-    from server.flows.tasks.p3_transcribe import run_p3_transcribe
-    p3_results: list[P3Result] = []
+    # --- P2v: transcribe + verify (mock WhisperX) ---
+    from server.flows.tasks.p2v_verify import run_p2v_verify
+    from server.core.domain import P2vResult
+    p2v_results: list[P2vResult] = []
     for cid in chunk_ids:
-        result = await run_p3_transcribe(cid, language="en")
-        p3_results.append(result)
-    assert all(r.word_count > 0 for r in p3_results)
+        result = await run_p2v_verify(cid, language="en")
+        p2v_results.append(result)
+    assert all(r.verdict == "pass" for r in p2v_results)
 
-    # Verify chunk status → transcribed
+    # Verify chunk status → verified
     async with maker() as session:
         for cid in chunk_ids:
             chunk = await ChunkRepo(session).get(cid)
             assert chunk is not None
-            assert chunk.status == "transcribed"
+            assert chunk.status == "verified"
 
     # Verify transcript in MinIO
     for cid in chunk_ids:

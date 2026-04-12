@@ -176,7 +176,7 @@ async def _seed_chunk(
             )
             if select_take:
                 await chunk_repo.set_selected_take(CHUNK_ID, TAKE_ID)
-            await chunk_repo.set_status(CHUNK_ID, "transcribed")
+            await chunk_repo.set_status(CHUNK_ID, "verified")
         await session.commit()
 
 
@@ -230,7 +230,7 @@ class TestRunP5SubtitlesHappyPath:
         async with session_factory() as session:
             chunk = await ChunkRepo(session).get(CHUNK_ID)
             assert chunk is not None
-            assert chunk.status == "transcribed"  # P5 no longer changes status
+            assert chunk.status == "verified"  # P5 no longer changes status
 
             events = await EventRepo(session).list_since(EP_ID)
             kinds = [e.kind for e in events]

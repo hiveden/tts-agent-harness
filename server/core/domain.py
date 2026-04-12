@@ -26,7 +26,7 @@ from pydantic.alias_generators import to_camel
 # ---------------------------------------------------------------------------
 
 EpisodeStatus = Literal["empty", "ready", "running", "failed", "done"]
-ChunkStatus = Literal["pending", "synth_done", "transcribed", "failed"]
+ChunkStatus = Literal["pending", "synth_done", "verified", "needs_review", "failed"]
 StageName = Literal["p1", "p1c", "p2", "p2c", "p2v", "p3", "p5", "p6", "p6v"]
 StageStatus = Literal["pending", "running", "ok", "failed"]
 EventKind = Literal[
@@ -39,6 +39,12 @@ EventKind = Literal[
     "chunk_edited",
     "episode_created",
     "episode_status_changed",
+    "verify_started",
+    "verify_finished",
+    "verify_failed",
+    "repair_decided",
+    "needs_review",
+    "review_reset",
 ]
 
 
@@ -237,6 +243,17 @@ class FishTTSParams(_CamelBase):
     chunk_length: int = 200
 
 
+class P2vResult(_CamelBase):
+    """Result of the P2v verify task (ASR + quality check)."""
+
+    chunk_id: str
+    verdict: Literal["pass", "fail"]
+    char_ratio: float
+    transcript_uri: str | None = None
+    transcribed_text: str = ""
+    original_text: str = ""
+
+
 class P3Result(_CamelBase):
     chunk_id: str
     transcript_uri: str
@@ -337,6 +354,7 @@ __all__ = [
     # stages
     "P1Result",
     "P2Result",
+    "P2vResult",
     "FishTTSParams",
     "P3Result",
     "P5Result",
