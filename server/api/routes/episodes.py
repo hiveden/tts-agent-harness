@@ -1071,3 +1071,145 @@ async def get_episode_logs(
         lines.append(f"[{ts}]{chunk_part} {ev.kind} {payload_str}".rstrip())
 
     return EpisodeLogsResponse(lines=lines)
+
+
+# ---------------------------------------------------------------------------
+# GET /episodes/{id}/export — download production assets as zip
+# ---------------------------------------------------------------------------
+
+
+@router.get("/episodes/{episode_id}/export")
+async def export_episode(
+    episode_id: str,
+    format: str = Query("shots", description="Export format: shots (per-shot WAV + subtitles)"),
+    session: AsyncSession = Depends(get_session),
+    storage: MinIOStorage = Depends(get_storage),
+):
+    """Export episode production assets as a zip file.
+
+    format=shots (default):
+      {episode_id}/
+        shot01.wav, shot02.wav, ...
+        subtitles.json
+        durations.json
+    """
+    import io
+    import json
+    import tempfile
+    import zipfile
+    from collections import defaultdict
+    from pathlib import Path
+
+    from fastapi.responses import StreamingResponse
+
+    repo = EpisodeRepo(session)
+    ep = await repo.get(episode_id)
+    if ep is None:
+        raise DomainError("not_found", f"episode '{episode_id}' not found")
+
+    chunk_repo = ChunkRepo(session)
+    take_repo = TakeRepo(session)
+    chunks = await chunk_repo.list_by_episode(episode_id)
+
+    # Group chunks by shot, ordered by idx
+    shots: dict[str, list] = defaultdict(list)
+    for c in sorted(chunks, key=lambda c: (c.shot_id, c.idx)):
+        if c.selected_take_id and c.status in ("verified", "synth_done"):
+            take = await take_repo.select(c.selected_take_id)
+            if take:
+                shots[c.shot_id].append({"chunk": c, "take": take})
+
+    if not shots:
+        raise DomainError("invalid_state", "no verified chunks to export")
+
+    # Build zip in memory
+    buf = io.BytesIO()
+    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
+        durations = []
+        all_subtitles: dict[str, list] = {}
+
+        for shot_id, items in shots.items():
+            # Concat chunk WAVs for this shot using ffmpeg
+            with tempfile.TemporaryDirectory() as tmp:
+                tmp_path = Path(tmp)
+                chunk_paths = []
+
+                for i, item in enumerate(items):
+                    take = item["take"]
+                    # Strip s3:// prefix
+                    audio_key = take.audio_uri.split("//", 1)[-1].split("/", 1)[-1] if take.audio_uri.startswith("s3://") else take.audio_uri
+                    try:
+                        wav_bytes = await storage.download_bytes(audio_key)
+                    except Exception:
+                        continue
+                    chunk_wav = tmp_path / f"chunk_{i:03d}.wav"
+                    chunk_wav.write_bytes(wav_bytes)
+                    chunk_paths.append(chunk_wav)
+
+                if not chunk_paths:
+                    continue
+
+                # Simple concat with ffmpeg
+                if len(chunk_paths) == 1:
+                    shot_wav_bytes = chunk_paths[0].read_bytes()
+                else:
+                    concat_list = tmp_path / "concat.txt"
+                    concat_list.write_text(
+                        "\n".join(f"file '{p.name}'" for p in chunk_paths)
+                    )
+                    shot_wav = tmp_path / f"{shot_id}.wav"
+                    import subprocess
+                    proc = subprocess.run(
+                        ["ffmpeg", "-y", "-f", "concat", "-safe", "0",
+                         "-i", str(concat_list), "-c", "copy", str(shot_wav)],
+                        capture_output=True, timeout=30,
+                    )
+                    if proc.returncode != 0:
+                        continue
+                    shot_wav_bytes = shot_wav.read_bytes()
+
+                zf.writestr(f"{episode_id}/{shot_id}.wav", shot_wav_bytes)
+
+                # Duration from ffprobe
+                import struct, wave
+                try:
+                    with io.BytesIO(shot_wav_bytes) as wio:
+                        with wave.open(wio) as wf:
+                            dur = wf.getnframes() / wf.getframerate()
+                except Exception:
+                    dur = sum(item["take"].duration_s for item in items)
+
+                durations.append({
+                    "id": shot_id,
+                    "duration_s": round(dur, 3),
+                    "file": f"{shot_id}.wav",
+                })
+
+            # Collect subtitles for this shot
+            shot_subs = []
+            for item in items:
+                c = item["chunk"]
+                sub_key = f"episodes/{episode_id}/chunks/{c.id}/subtitle.srt"
+                try:
+                    srt_bytes = await storage.download_bytes(sub_key)
+                    shot_subs.append({"chunk_id": c.id, "srt": srt_bytes.decode("utf-8")})
+                except Exception:
+                    pass
+            if shot_subs:
+                all_subtitles[shot_id] = shot_subs
+
+        # Write subtitles.json
+        zf.writestr(f"{episode_id}/subtitles.json", json.dumps(all_subtitles, ensure_ascii=False, indent=2))
+
+        # Write durations.json
+        zf.writestr(f"{episode_id}/durations.json", json.dumps(durations, ensure_ascii=False, indent=2))
+
+    buf.seek(0)
+    return StreamingResponse(
+        buf,
+        media_type="application/zip",
+        headers={
+            "Content-Disposition": f'attachment; filename="{episode_id}.zip"',
+            "Content-Length": str(buf.getbuffer().nbytes),
+        },
+    )
