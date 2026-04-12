@@ -11,19 +11,33 @@ interface Props {
 
 const FULL_LABELS: Record<StageName, string> = {
   p1: "P1",
+  p1c: "P1c",
   p2: "P2",
+  p2c: "P2c",
+  p2v: "P2v",
   p3: "P3",
   p5: "P5",
   p6: "P6",
+  p6v: "P6v",
 };
 
 const COMPACT_LABELS: Record<StageName, string> = {
   p1: "P1",
+  p1c: "1c",
   p2: "P2",
+  p2c: "2c",
+  p2v: "2v",
   p3: "P3",
   p5: "P5",
   p6: "P6",
+  p6v: "6v",
 };
+
+const GATE_STAGES = new Set<StageName>(["p1c", "p2c", "p2v", "p6v"]);
+
+function isGate(stage: StageName): boolean {
+  return GATE_STAGES.has(stage);
+}
 
 function stageColorClasses(sr: StageRun | undefined): string {
   if (!sr || sr.status === "pending") return "bg-neutral-200 text-neutral-500";
@@ -72,10 +86,14 @@ export function StagePipeline({
         const isStale = !!sr?.stale;
         const showAttemptBadge = (sr?.attempt ?? 0) > 1;
 
+        const gate = isGate(stage);
+        const prevGate = idx > 0 && isGate(STAGE_ORDER[idx - 1]);
+        const connectorWidth = gate || prevGate ? "w-1" : "w-2";
+
         return (
           <div key={stage} className="inline-flex items-center">
             {idx > 0 && (
-              <span aria-hidden className="inline-block h-px w-2 bg-neutral-300" />
+              <span aria-hidden className={`inline-block h-px ${connectorWidth} bg-neutral-300`} />
             )}
             <button
               type="button"
@@ -83,8 +101,8 @@ export function StagePipeline({
               onClick={onStageClick ? () => onStageClick(stage) : undefined}
               disabled={!clickable}
               className={[
-                "relative inline-flex items-center gap-1 rounded-full font-mono font-semibold uppercase tracking-wide transition",
-                pillSize,
+                "relative inline-flex items-center gap-1 font-mono font-semibold uppercase tracking-wide transition",
+                gate ? "rounded-sm text-[9px] h-4 px-1" : `rounded-full ${pillSize}`,
                 color,
                 hover,
                 clickable ? "" : "cursor-default",

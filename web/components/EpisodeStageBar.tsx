@@ -8,7 +8,9 @@ interface Props {
 }
 
 /** Stages to display at episode level (skip p1/p6 — they're episode-scoped, not per-chunk). */
-const CHUNK_STAGES: StageName[] = ["p2", "p3", "p5"];
+const CHUNK_STAGES: StageName[] = ["p2", "p2c", "p2v", "p3", "p5"];
+
+const GATE_STAGES = new Set<StageName>(["p1c", "p2c", "p2v", "p6v"]);
 
 interface StageAgg {
   total: number;
@@ -78,7 +80,9 @@ export function EpisodeStageBar({ chunks, onStageRetry }: Props) {
                   ? `${agg.failed} failed — click to retry`
                   : `${agg.ok}/${agg.total} complete`
               }
-              className={`inline-flex items-center px-2 py-0.5 rounded-full text-[10px] font-mono font-semibold ${color} ${
+              className={`inline-flex items-center px-2 py-0.5 ${
+                GATE_STAGES.has(stage) ? "rounded-sm text-[9px]" : "rounded-full text-[10px]"
+              } font-mono font-semibold ${color} ${
                 clickable ? "cursor-pointer hover:brightness-110" : "cursor-default"
               }`}
             >

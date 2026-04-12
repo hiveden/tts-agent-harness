@@ -16,12 +16,33 @@ export const STAGE_INFO: Record<StageName, StageInfo> = {
     outputs: "chunks 列表（DB）",
     failure: "script.json 格式错误 / MinIO 读取失败",
   },
+  p1c: {
+    title: "P1c · 输入校验",
+    description: "校验 chunks 合法性，在 TTS 调用前拦截可预见的问题",
+    inputs: "chunks 列表（DB）",
+    outputs: "校验通过 / 错误报告",
+    failure: "chunk 文本为空 / 字段缺失 / 格式不合规",
+  },
   p2: {
     title: "P2 · TTS 合成",
     description: "调用 Fish Audio S2-Pro API，将 chunk 的 text_normalized 合成为 WAV 音频。参数从 episode.config 读取（temperature / top_p / speed / reference_id）。",
     inputs: "chunk.textNormalized + episode.config",
     outputs: "WAV 音频（MinIO）+ take 记录（DB）",
     failure: "Fish API 401（key 无效）/ 429（限流）/ 超时 / 空响应",
+  },
+  p2c: {
+    title: "P2c · 格式校验",
+    description: "校验 WAV 文件格式合法性，在 ASR 之前拦截坏文件",
+    inputs: "take WAV 音频（MinIO）",
+    outputs: "校验通过 / 错误报告",
+    failure: "WAV 文件损坏 / 采样率不符 / 空文件",
+  },
+  p2v: {
+    title: "P2v · 内容验证",
+    description: "ASR 转写 + 原文比对做质量校验，同时产出 transcript",
+    inputs: "take WAV 音频 + chunk.textNormalized",
+    outputs: "transcript.json（MinIO）+ 质量评分",
+    failure: "ASR 转写失败 / 内容偏差超阈值",
   },
   p3: {
     title: "P3 · WhisperX 转写",
@@ -43,5 +64,12 @@ export const STAGE_INFO: Record<StageName, StageInfo> = {
     inputs: "所有 chunk 的 take WAV + subtitle SRT",
     outputs: "final/episode.wav + final/episode.srt（MinIO）",
     failure: "某 chunk 无 selected_take / ffmpeg 错误 / MinIO 写入失败",
+  },
+  p6v: {
+    title: "P6v · 端到端验证",
+    description: "最终产物完整性校验，检查字幕覆盖率和时间戳",
+    inputs: "final/episode.wav + final/episode.srt",
+    outputs: "校验通过 / 错误报告",
+    failure: "字幕覆盖率不足 / 时间戳 gap/overlap 超阈值",
   },
 };
