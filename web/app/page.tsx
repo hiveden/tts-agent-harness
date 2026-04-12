@@ -24,10 +24,16 @@ export default function Page() {
   // --- Store state ---
   const store = useHarnessStore();
 
+  // Defer selectedId to client-side only to avoid SSR hydration mismatch
+  // (localStorage is unavailable during SSR → selectedId=null on server but non-null on client)
+  const [mounted, setMounted] = useState(false);
+  useEffect(() => setMounted(true), []);
+  const selectedId = mounted ? store.selectedId : null;
+
   // --- Server state (SWR) ---
   const { data: episodes, error: episodesError, mutate: mutateList } = useEpisodes();
-  const { data: episode, error: episodeError, mutate: mutateDetail } = useEpisode(store.selectedId);
-  const { data: logLines } = useEpisodeLogs(store.selectedId);
+  const { data: episode, error: episodeError, mutate: mutateDetail } = useEpisode(selectedId);
+  const { data: logLines } = useEpisodeLogs(selectedId);
 
   // --- Derived ---
   const running = episode?.status === "running";
@@ -94,7 +100,7 @@ export default function Page() {
         {/* Sidebar */}
         <EpisodeSidebar
           episodes={episodes ?? []}
-          selectedId={store.selectedId}
+          selectedId={selectedId}
           onSelect={store.selectEpisode}
           onNewEpisode={() => setNewEpOpen(true)}
           error={episodesError ?? null}
@@ -197,7 +203,7 @@ export default function Page() {
                   <div className="text-xs text-red-400 font-mono max-w-md break-all">{episodeError.message || String(episodeError)}</div>
                   <button type="button" onClick={() => mutateDetail()} className="mt-3 text-xs px-3 py-1 rounded border border-neutral-300 hover:bg-neutral-100">Retry</button>
                 </div>
-              ) : store.selectedId ? (
+              ) : selectedId ? (
                 <div className="text-neutral-400">Loading...</div>
               ) : (
                 "Select an episode from the sidebar"
