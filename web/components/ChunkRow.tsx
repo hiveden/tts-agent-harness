@@ -32,9 +32,12 @@ interface Props {
 
 function statusIcon(status: ChunkStatus) {
   switch (status) {
-    case "transcribed":
-    case "synth_done":
+    case "verified":
       return <span className="text-emerald-500">✓</span>;
+    case "synth_done":
+      return <span className="text-blue-500">◐</span>;
+    case "needs_review":
+      return <span className="text-amber-500">🔍</span>;
     case "pending":
       return <span className="text-neutral-300">○</span>;
     case "failed":
@@ -87,7 +90,7 @@ export function ChunkRow({
   const audioUrl =
     chunk.selectedTakeId &&
     currentTakeForUrl &&
-    (chunk.status === "synth_done" || chunk.status === "transcribed")
+    (chunk.status === "synth_done" || chunk.status === "verified" || chunk.status === "needs_review")
       ? getAudioUrl(currentTakeForUrl.audioUri) + cacheBust
       : "";
 
@@ -107,7 +110,7 @@ export function ChunkRow({
   const currentTake = chunk.takes.find((t) => t.id === chunk.selectedTakeId);
   const durationS = currentTake?.durationS ?? 0;
 
-  const hasAudio = chunk.status === "synth_done" || chunk.status === "transcribed";
+  const hasAudio = chunk.status === "synth_done" || chunk.status === "verified" || chunk.status === "needs_review";
   const canPlay = hasAudio && !isDirty;
   const needsSynth = chunk.status === "pending" && !isDirty;
 
@@ -126,9 +129,11 @@ export function ChunkRow({
     ? "bg-blue-50 shadow-[inset_3px_0_0_#2563eb]"
     : isEditing
       ? "bg-neutral-50"
-      : isDirty
-        ? "bg-amber-50/30 hover:bg-amber-50/50"
-        : "hover:bg-neutral-50";
+      : chunk.status === "needs_review"
+        ? "bg-amber-50 hover:bg-amber-100/60"
+        : isDirty
+          ? "bg-amber-50/30 hover:bg-amber-50/50"
+          : "hover:bg-neutral-50";
 
   let dirtyBadge: string | null = null;
   if (dirty === "tts") dirtyBadge = "TTS dirty";

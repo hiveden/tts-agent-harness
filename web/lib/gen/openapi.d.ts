@@ -317,7 +317,7 @@ export interface components {
              * Status
              * @enum {string}
              */
-            status: "pending" | "synth_done" | "transcribed" | "failed";
+            status: "pending" | "synth_done" | "verified" | "needs_review" | "failed";
             /** Selectedtakeid */
             selectedTakeId: string | null;
             /** Boundaryhash */

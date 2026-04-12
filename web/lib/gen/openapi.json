@@ -944,7 +944,8 @@
             "enum": [
               "pending",
               "synth_done",
-              "transcribed",
+              "verified",
+              "needs_review",
               "failed"
             ],
             "title": "Status"

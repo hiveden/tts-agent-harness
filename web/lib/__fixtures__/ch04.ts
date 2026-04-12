@@ -28,7 +28,7 @@ export const ch04Episode: Episode = {
       textNormalized:
         "接下来这一段,是这一期的核心。[break]我要把它讲细,因为它细节里有钩子。[long break]Claude 教训练集、验证集、测试集为什么要切三份。",
       subtitleText: null,
-      status: "transcribed",
+      status: "verified",
       charCount: 78,
       selectedTakeId: "take_1",
       metadata: {},
@@ -52,7 +52,7 @@ export const ch04Episode: Episode = {
       textNormalized:
         "它没直接给定义,[break]先用了一个决策树调参的场景。[long break]假设你训练一个决策树预测房价。",
       subtitleText: null,
-      status: "transcribed",
+      status: "verified",
       charCount: 56,
       selectedTakeId: "take_1",
       metadata: {},
@@ -77,7 +77,7 @@ export const ch04Episode: Episode = {
         "[break]第一次跑完,[breath]训练集准确率百分之九十八,测试集百分之七十二——[break]你看出过拟合了。[long break]你调一个参数,[breath]把 max depth 从默认改成 5。[break]再跑,训练百分之九十五,测试百分之八十五。[breath]好多了。",
       subtitleText:
         "第一次跑完,训练集准确率 98%,测试集 72%——你看出过拟合了。你调一个参数,把 max_depth 从默认改成 5。再跑,训练 95%,测试 85%。好多了。",
-      status: "transcribed",
+      status: "verified",
       charCount: 147,
       selectedTakeId: "take_1",
       metadata: {},
@@ -102,7 +102,7 @@ export const ch04Episode: Episode = {
         "[long break]再调,max depth 改成 8,[break]训练百分之九十六,测试百分之八十八。[breath]更好。[long break]再调,max depth 改成 10,[break]训练百分之九十七,测试百分之八十七。[breath]嗯?退步了,回去 8。[long break]最终定下来 max depth 等于 8,[break]准确率百分之八十八,[break]发布上线。",
       subtitleText:
         "再调,max_depth 改成 8,训练 96%,测试 88%。更好。再调,max_depth 改成 10,训练 97%,测试 87%。嗯?退步了,回去 8。最终定下来 max_depth = 8,准确率 88%,发布上线。",
-      status: "transcribed",
+      status: "verified",
       charCount: 203,
       selectedTakeId: "take_2",
       metadata: {},
@@ -140,7 +140,7 @@ export const ch04Episode: Episode = {
       textNormalized:
         "然后 Claude 问我两个问题。[long break]第一个问题是,[breath]你刚才反复调参数、看测试集、调参数、看测试集——[break]这个过程里,[long break]测试集还能算,模型从未见过,吗?[long break]我用工程师本能答,[breath]如果每次都是从 0 开始执行流程,那就算有效;[break]否则无效。",
       subtitleText: null,
-      status: "transcribed",
+      status: "verified",
       charCount: 173,
       selectedTakeId: "take_1",
       metadata: {},
@@ -163,7 +163,7 @@ export const ch04Episode: Episode = {
       text: "Claude 说我抓到了一半,",
       textNormalized: "Claude 说我抓到了一半,",
       subtitleText: null,
-      status: "transcribed",
+      status: "verified",
       charCount: 15,
       selectedTakeId: "take_1",
       metadata: {},
@@ -188,7 +188,7 @@ export const ch04Episode: Episode = {
         "而且这是工程师才会想到的那一半——[breath]模型本身确实不记得测试集,[long break]max depth 等于 5 训出来的树,[break]和 max depth 等于 8 训出来的树,[break]是两棵完全独立的树。[long break]从模型的角度看,[break]每次它都是第一次见到测试集。",
       subtitleText:
         "而且这是工程师才会想到的那一半——模型本身确实不记得测试集,max_depth=5 训出来的树,和 max_depth=8 训出来的树,是两棵完全独立的树。从模型的角度看,每次它都是第一次见到测试集。",
-      status: "transcribed",
+      status: "verified",
       charCount: 159,
       selectedTakeId: "take_1",
       metadata: {},
@@ -212,7 +212,7 @@ export const ch04Episode: Episode = {
       textNormalized:
         "然后它给了我没看到的另一半。[long break]模型重置了,[break]但,你,没有重置。[long break]测试集结果——[breath]你的眼睛——[breath]你的大脑——[breath]你的决策——[breath]新模型。[long break]这条线就是泄漏通道。[long break]虽然每次模型从 0 开始,[break]但你不是。",
       subtitleText: null,
-      status: "transcribed",
+      status: "verified",
       charCount: 180,
       selectedTakeId: "take_1",
       metadata: {},
