@@ -31,15 +31,39 @@ export function EpisodeSidebar({
   // Collapsed: narrow strip with expand button
   if (collapsed) {
     return (
-      <aside className="w-10 border-r border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col items-center shrink-0 py-2 gap-2">
+      <aside className="w-10 border-r border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col items-center shrink-0">
         <button
           type="button"
           onClick={onToggleCollapse}
-          className="w-7 h-7 rounded flex items-center justify-center text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800"
+          className="w-10 h-10 flex items-center justify-center text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 border-b border-neutral-100 dark:border-neutral-700 shrink-0"
           title="展开侧边栏"
         >
           <PanelLeftOpen size={14} />
         </button>
+        <div className="flex-1 overflow-y-auto py-1.5 flex flex-col items-center gap-0.5 w-full">
+          {episodes.map((ep) => {
+            const sel = ep.id === selectedId;
+            const dotClass = STATUS_DOT[ep.status] ?? "bg-neutral-300";
+            return (
+              <button
+                key={ep.id}
+                type="button"
+                onClick={() => onSelect(ep.id)}
+                className={`w-8 h-8 rounded flex items-center justify-center shrink-0 ${
+                  sel
+                    ? "bg-neutral-900 dark:bg-white"
+                    : "hover:bg-neutral-100 dark:hover:bg-neutral-800"
+                }`}
+                title={`${ep.title} (${ep.status})`}
+              >
+                <span className={`w-2 h-2 rounded-full ${dotClass}`} />
+              </button>
+            );
+          })}
+        </div>
+        <div className="py-2 text-[9px] text-neutral-400 dark:text-neutral-500 font-mono">
+          {episodes.length}
+        </div>
       </aside>
     );
   }
