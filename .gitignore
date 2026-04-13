@@ -18,5 +18,6 @@ __pycache__/
 .claude/
 .venv-server/
 docker/.env
+test-results/
 web/test-results/
 web/playwright-report/
