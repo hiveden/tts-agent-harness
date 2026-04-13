@@ -1,0 +1,4 @@
+- [S2-Pro 升级回顾](session_s2pro_retrospective.md) — S2-Pro 适配尝试的完整过程、发现的核心问题、有价值但未提交的改动
+- [P1 收敛 + 脚本 Harness 拆分](architecture_p1_split.md) — P1 只做格式校验，内容优化拆到上游脚本 Harness，已对齐方向
+- [长任务后台执行 + 主动监控](feedback_long_tasks_background.md) — 耗时 >30s 命令必须后台跑+轮询;同 episode run.sh 不能并发(P3 server 单例)
+- [run.sh --from p3 会跑 P4 并污染状态](project_run_sh_p4_pollution.md) — 单 chunk 重做要绕开 run.sh:p2-synth → p3-transcribe 直调 → 改状态 → --from p5
