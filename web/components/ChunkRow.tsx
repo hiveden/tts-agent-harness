@@ -8,6 +8,7 @@ import { KaraokeSubtitle } from "./KaraokeSubtitle";
 import { RetryRow } from "./RetryRow";
 import { StagePipeline } from "./StagePipeline";
 import { TakeSelector } from "./TakeSelector";
+import { GRID_COLS } from "./chunks-grid";
 
 export type DirtyType = null | "tts" | "subtitle" | "both";
 export type DisplayMode = "subtitle" | "tts";
@@ -159,8 +160,11 @@ export function ChunkRow({
   const baseColor = isDirty ? "text-amber-900" : "text-neutral-700";
 
   return (
-    <tr className={`border-b border-neutral-100 ${rowBg}`}>
-      <td className="px-6 py-2.5 font-mono text-[11px] text-neutral-500 align-top">
+    <div
+      className={`grid border-b border-neutral-100 text-sm ${rowBg}`}
+      style={{ gridTemplateColumns: GRID_COLS }}
+    >
+      <div className="px-6 py-2.5 font-mono text-[11px] text-neutral-500 self-start">
         {chunk.id}
         {hasSubField ? (
           <span
@@ -170,12 +174,12 @@ export function ChunkRow({
             ◆
           </span>
         ) : null}
-      </td>
-      <td className="py-2.5 align-top">{statusIcon(chunk.status)}</td>
-      <td className="py-2.5 align-top text-[11px] text-neutral-500 font-mono">
+      </div>
+      <div className="py-2.5 self-start">{statusIcon(chunk.status)}</div>
+      <div className="py-2.5 self-start text-[11px] text-neutral-500 font-mono">
         {durationS > 0 ? `${durationS.toFixed(1)}s` : "--"}
-      </td>
-      <td className="py-2.5 align-top">
+      </div>
+      <div className="py-2.5 self-start">
         {needsSynth ? (
           <button
             type="button"
@@ -205,8 +209,8 @@ export function ChunkRow({
             {isPlaying ? "⏸" : "▶"}
           </button>
         )}
-      </td>
-      <td className="py-2.5 pr-6 align-top">
+      </div>
+      <div className="py-2.5 pr-6 self-start">
         <div className="flex items-start flex-wrap">
           <div className="flex-1 min-w-0">
             <KaraokeSubtitle
@@ -268,8 +272,8 @@ export function ChunkRow({
             className="hidden"
           />
         ) : null}
-      </td>
-      <td className="py-2.5 pr-6 align-top text-right">
+      </div>
+      <div className="py-2.5 pr-6 self-start text-right">
         <button
           type="button"
           onClick={isEditing ? onCancelEdit : onEdit}
@@ -282,7 +286,7 @@ export function ChunkRow({
         >
           {isEditing ? "✕" : "✎"}
         </button>
-      </td>
-    </tr>
+      </div>
+    </div>
   );
 }

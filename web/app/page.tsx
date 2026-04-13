@@ -19,6 +19,7 @@ import { StageProgress } from "@/components/StageProgress";
 import { EpisodeStageBar } from "@/components/EpisodeStageBar";
 import { TtsConfigBar } from "@/components/TtsConfigBar";
 import { StageLogDrawer } from "@/components/StageLogDrawer";
+import { ScriptPreviewDialog } from "@/components/ScriptPreviewDialog";
 
 export default function Page() {
   // --- Store state ---
@@ -80,6 +81,7 @@ export default function Page() {
 
   // --- NewEpisode dialog state (local — only used here) ---
   const [newEpOpen, setNewEpOpen] = useState(false);
+  const [scriptPreviewOpen, setScriptPreviewOpen] = useState(false);
   const [synthesizingCid, setSynthesizingCid] = useState<string | null>(null);
 
   return (
@@ -119,6 +121,7 @@ export default function Page() {
                 episode={episode}
                 running={running}
                 onRun={async (mode) => { await store.runEpisode(mode); await mutateDetail(); await mutateList(); }}
+                onViewScript={() => setScriptPreviewOpen(true)}
                 failedCount={failedCount}
               />
               <TtsConfigBar
@@ -150,12 +153,12 @@ export default function Page() {
                 onApply={async () => { await store.applyEdits(episode.id); await mutateDetail(); }}
                 onDiscard={store.discardEdits}
               />
-              <div className="flex-1 overflow-y-auto bg-white">
+              <div className="flex-1 flex flex-col overflow-hidden bg-white">
                 {episode.chunks.length === 0 ? (
                   <div className="px-6 py-12 text-center text-sm text-neutral-400">还没有 chunks。点按钮开始。</div>
                 ) : (
                   <>
-                    <div className="px-6 py-2 sticky top-0 bg-white border-b border-neutral-100 flex items-center z-10">
+                    <div className="px-6 py-2 bg-white border-b border-neutral-100 flex items-center z-10 shrink-0">
                       <h3 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Chunks</h3>
                       <span className="ml-2 text-[11px] text-neutral-400">{episode.chunks.length} items</span>
                     </div>
@@ -222,6 +225,13 @@ export default function Page() {
         onCreate={async (id, file) => { await store.createEpisode(id, file); await mutateList(); store.selectEpisode(id); setNewEpOpen(false); }}
       />
       <HelpDialog open={store.helpOpen} onClose={() => store.setHelpOpen(false)} />
+      {selectedId && (
+        <ScriptPreviewDialog
+          episodeId={selectedId}
+          open={scriptPreviewOpen}
+          onClose={() => setScriptPreviewOpen(false)}
+        />
+      )}
 
       {/* Stage Log Drawer */}
       {store.drawerOpen && store.selectedId && episode && <DrawerWithContext
