@@ -1,6 +1,6 @@
 "use client";
 
-import { PanelLeftClose, PanelLeftOpen } from "lucide-react";
+import { Lock, PanelLeftClose, PanelLeftOpen } from "lucide-react";
 import type { EpisodeSummary, EpisodeStatus } from "@/lib/types";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 
@@ -101,6 +101,7 @@ export function EpisodeSidebar({
               <button type="button" onClick={() => onSelect(ep.id)} className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
                 <span className="font-medium text-sm truncate">{ep.title}</span>
+                {ep.locked && <Lock size={10} className={`shrink-0 ${sel ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400 dark:text-neutral-500"}`} />}
                 <span className={`ml-auto text-[11px] font-mono ${sel ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400 dark:text-neutral-500"}`}>{suffix}</span>
               </button>
               {hasMenu && (
@@ -111,8 +112,8 @@ export function EpisodeSidebar({
                   <DropdownMenuContent align="end">
                     {onDuplicate && <DropdownMenuItem onClick={() => onDuplicate(ep.id)}>复制</DropdownMenuItem>}
                     {onArchive && <DropdownMenuItem onClick={() => onArchive(ep.id)}>归档</DropdownMenuItem>}
-                    {(onDuplicate || onArchive) && onDelete && <DropdownMenuSeparator />}
-                    {onDelete && <DropdownMenuItem destructive onClick={() => onDelete(ep.id)}>删除</DropdownMenuItem>}
+                    {(onDuplicate || onArchive) && onDelete && !ep.locked && <DropdownMenuSeparator />}
+                    {onDelete && !ep.locked && <DropdownMenuItem destructive onClick={() => onDelete(ep.id)}>删除</DropdownMenuItem>}
                   </DropdownMenuContent>
                 </DropdownMenu>
               )}

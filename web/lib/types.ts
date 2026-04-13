@@ -75,6 +75,7 @@ export interface Episode {
   title: string;
   description: string | null;
   status: EpisodeStatus;
+  locked: boolean;
   scriptUri: string;
   config: Record<string, unknown>;
   createdAt: string;
@@ -88,6 +89,7 @@ export interface EpisodeSummary {
   id: EpisodeId;
   title: string;
   status: EpisodeStatus;
+  locked: boolean;
   chunkCount: number;
   doneCount: number;
   failedCount: number;

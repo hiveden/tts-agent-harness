@@ -1,7 +1,7 @@
 "use client";
 
 import { useTheme } from "@/components/Providers";
-import { Sun, Moon, KeyRound } from "lucide-react";
+import { Lock, Sun, Moon, KeyRound } from "lucide-react";
 import type { Episode, EpisodeStatus } from "@/lib/types";
 import { getApiUrl } from "@/lib/api-client";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
@@ -81,6 +81,12 @@ export function EpisodeHeader({ episode, running, onRun, onViewScript, onApiKeyC
         </button>
       </div>
       <div className="flex gap-2 items-center">
+        {episode.locked ? (
+          <span className="inline-flex items-center gap-1.5 px-3 py-1.5 text-sm rounded bg-neutral-100 dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
+            <Lock size={12} /> Locked
+          </span>
+        ) : (
+        <>
         {/* Primary action button */}
         <button
           type="button"
@@ -152,6 +158,8 @@ export function EpisodeHeader({ episode, running, onRun, onViewScript, onApiKeyC
             )}
           </DropdownMenuContent>
         </DropdownMenu>
+        </>
+        )}
       </div>
     </div>
   );
