@@ -23,5 +23,8 @@ docker/.env
 test-results/
 web/test-results/
 web/playwright-report/
-" /"
+\ /
 .harness/
+web/e2e/screenshots/
+docs/_archive/
+docs/worklogs/
