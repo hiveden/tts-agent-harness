@@ -7,7 +7,9 @@ node_modules/
 *.wav
 *.mp3
 .env
-test/ab-param-test/output/
+test/ab-param-test/
+_archive/
+prototype*.html
 __pycache__/
 *.pyc
 *.egg-info/
