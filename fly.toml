@@ -1,4 +1,9 @@
-app = 'hiveden-tts'
+# fly.toml app configuration file generated for tts-agent-harness on 2026-04-13T14:56:44Z
+#
+# See https://fly.io/docs/reference/configuration/ for information about how to use this file.
+#
+
+app = 'tts-agent-harness'
 primary_region = 'nrt'
 
 [build]
@@ -9,15 +14,10 @@ primary_region = 'nrt'
   auto_stop_machines = 'stop'
   auto_start_machines = true
   min_machines_running = 0
+  processes = ['app']
 
 [[vm]]
   memory = '1gb'
   cpu_kind = 'shared'
   cpus = 1
-
-[env]
-  API_PORT = '8100'
-  WEB_PORT = '3010'
-  NEXT_PUBLIC_API_URL = 'http://localhost:8100'
-  WHISPERX_URL = ''
-  LOG_LEVEL = 'info'
+  memory_mb = 1024
