@@ -1,6 +1,6 @@
 "use client";
 
-import { useTheme } from "next-themes";
+import { useTheme } from "@/components/Providers";
 import { Sun, Moon } from "lucide-react";
 import type { Episode, EpisodeStatus } from "@/lib/types";
 import { getApiUrl } from "@/lib/api-client";
@@ -27,7 +27,7 @@ const STATUS_BADGE: Record<
 
 export function EpisodeHeader({ episode, running, onRun, onViewScript, failedCount = 0 }: Props) {
   const badge = STATUS_BADGE[episode.status] ?? STATUS_BADGE.ready;
-  const { theme, setTheme } = useTheme();
+  const { resolvedTheme, setTheme } = useTheme();
 
   const totalDurationS = episode.chunks.reduce((sum, c) => {
     const selectedTake = c.takes.find((t) => t.id === c.selectedTakeId);
@@ -64,11 +64,11 @@ export function EpisodeHeader({ episode, running, onRun, onViewScript, failedCou
         </span>
         <button
           type="button"
-          onClick={() => setTheme(theme === "dark" ? "light" : "dark")}
+          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
           className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
           title="Toggle dark mode"
         >
-          {theme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+          {resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
         </button>
       </div>
       <div className="flex gap-2 items-center">
