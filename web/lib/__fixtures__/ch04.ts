@@ -13,6 +13,7 @@ export const ch04Episode: Episode = {
   title: "Ch04 Episode",
   description: null,
   status: "done",
+  locked: false,
   scriptUri: "episodes/ch04/script.json",
   config: {},
   createdAt: "2026-04-08T02:09:34.049Z",
@@ -238,6 +239,7 @@ export const fixtureEpisodeSummaries: EpisodeSummary[] = [
     chunkCount: 18,
     doneCount: 18,
     failedCount: 0,
+    locked: false,
     updatedAt: "2026-04-05T10:00:00.000Z",
   },
   {
@@ -247,6 +249,7 @@ export const fixtureEpisodeSummaries: EpisodeSummary[] = [
     chunkCount: 22,
     doneCount: 22,
     failedCount: 0,
+    locked: false,
     updatedAt: "2026-04-06T11:00:00.000Z",
   },
   {
@@ -256,6 +259,7 @@ export const fixtureEpisodeSummaries: EpisodeSummary[] = [
     chunkCount: 16,
     doneCount: 16,
     failedCount: 0,
+    locked: false,
     updatedAt: "2026-04-07T15:00:00.000Z",
   },
   {
@@ -265,6 +269,7 @@ export const fixtureEpisodeSummaries: EpisodeSummary[] = [
     chunkCount: 8,
     doneCount: 8,
     failedCount: 0,
+    locked: false,
     updatedAt: NOW,
   },
   {
@@ -274,6 +279,7 @@ export const fixtureEpisodeSummaries: EpisodeSummary[] = [
     chunkCount: 0,
     doneCount: 0,
     failedCount: 0,
+    locked: false,
     updatedAt: "2026-04-08T07:00:00.000Z",
   },
 ];
