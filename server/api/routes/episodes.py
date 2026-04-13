@@ -15,6 +15,7 @@ from fastapi import APIRouter, Depends, File, Form, Query, UploadFile
 from minio.error import S3Error
 from pydantic import BaseModel
 from server.core.domain import _CamelBase
+from sqlalchemy import func as sa_func, select
 from sqlalchemy.ext.asyncio import AsyncSession
 
 from server.core.domain import (
@@ -34,6 +35,7 @@ from server.core.repositories import (
     StageRunRepo,
     TakeRepo,
 )
+from server.core.models import Event
 from server.core.storage import MinIOStorage, episode_script_key
 from server.api.deps import get_prefect_client, get_session, get_storage
 
@@ -50,6 +52,8 @@ class ChunkDetail(ChunkView):
 
     takes: list[TakeView] = []
     stage_runs: list[StageRunView] = []
+    verify_scores: dict[str, float] | None = None
+    verify_diagnosis: dict[str, Any] | None = None
 
 
 class EpisodeDetail(EpisodeView):
@@ -225,6 +229,34 @@ async def get_episode(
     sr_repo = StageRunRepo(session)
 
     chunks = await chunk_repo.list_by_episode(episode_id)
+
+    # Batch-query latest verify event per chunk (avoid N+1)
+    chunk_ids = [c.id for c in chunks]
+    verify_map: dict[str, Event] = {}
+    if chunk_ids:
+        # Subquery: max event id per chunk for verify_finished/verify_failed
+        latest_ids_sq = (
+            select(
+                Event.chunk_id,
+                sa_func.max(Event.id).label("max_id"),
+            )
+            .where(
+                Event.chunk_id.in_(chunk_ids),
+                Event.kind.in_(["verify_finished", "verify_failed"]),
+            )
+            .group_by(Event.chunk_id)
+            .subquery()
+        )
+        result = await session.execute(
+            select(Event).join(
+                latest_ids_sq,
+                Event.id == latest_ids_sq.c.max_id,
+            )
+        )
+        for ev in result.scalars():
+            if ev.chunk_id:
+                verify_map[ev.chunk_id] = ev
+
     chunk_details: list[ChunkDetail] = []
     for c in chunks:
         takes = await take_repo.list_by_chunk(c.id)
@@ -250,6 +282,10 @@ async def get_episode(
             "takes": [TakeView.model_validate(t) for t in takes],
             "stage_runs": [StageRunView.model_validate(sr) for sr in stage_runs],
         }
+        ve = verify_map.get(c.id)
+        if ve:
+            chunk_dict["verify_scores"] = ve.payload.get("scores")
+            chunk_dict["verify_diagnosis"] = ve.payload.get("diagnosis")
         chunk_details.append(ChunkDetail(**chunk_dict))
 
     # Build from dict to avoid lazy-load on Episode.chunks relationship
