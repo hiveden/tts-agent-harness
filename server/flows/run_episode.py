@@ -19,8 +19,7 @@ from typing import Any
 
 from prefect import flow
 
-from server.core.domain import P1Result, P2vResult, P6Result, RepairConfig
-from server.flows.repair import decide_repair
+from server.core.domain import P1Result, P2vResult, P6Result
 from server.flows.tasks.p1_chunk import P1Context, p1_chunk
 from server.flows.tasks.p1c_check import p1c_check
 from server.flows.tasks.p2_synth import p2_synth, run_p2_synth
@@ -83,7 +82,7 @@ async def _run_chunk_only(episode_id: str) -> dict[str, Any]:
 
 
 # ---------------------------------------------------------------------------
-# Per-chunk synth loop (P2 → P2c → P2v, with L0/L1 repair)
+# Per-chunk synth pipeline (P2 → P2c → P2v, single pass)
 # ---------------------------------------------------------------------------
 
 
@@ -92,24 +91,19 @@ async def _synth_one_chunk(
     chunk_id: str,
     base_params: dict,
     language: str,
-    repair_config: RepairConfig,
     *,
     _write_event: Any | None = None,
     _set_chunk_status: Any | None = None,
 ) -> dict[str, Any]:
-    """Run the P2→P2c→P2v repair loop for a single chunk.
+    """Run P2→P2c→P2v once for a single chunk. No auto-retry loop.
 
-    Returns a summary dict with keys: chunk_id, verdict, attempts, level.
-    The ``_write_event`` and ``_set_chunk_status`` callbacks are used by
-    tests to intercept side-effects; in production they default to the
-    real implementations.
+    Returns a summary dict with keys: chunk_id, verdict.
+    On any failure, chunk is marked needs_review immediately.
+    Network-level retries are handled by Prefect task decorators.
     """
-    # Lazy-import write_event + ChunkRepo to avoid circular imports at
-    # module level and to let tests inject mocks.
     if _write_event is None:
         from server.flows.worker_bootstrap import _session_factory
         from server.core.events import write_event as _real_write_event
-        from server.core.repositories import ChunkRepo
 
         async def _write_event(ep_id, c_id, kind, payload):
             async with _session_factory() as session:
@@ -131,92 +125,48 @@ async def _synth_one_chunk(
                 await ChunkRepo(session).set_status(c_id, status)
                 await session.commit()
 
-    attempt = 0
-    level = 0
-    current_params = dict(base_params)
+    # P2: synthesize
+    try:
+        await run_p2_synth(chunk_id, params=base_params)
+    except Exception:
+        log.exception("P2 synth failed for chunk %s", chunk_id)
+        await _set_chunk_status(chunk_id, "needs_review")
+        await _write_event(episode_id, chunk_id, "needs_review", {"reason": "P2 synth exception"})
+        return {"chunk_id": chunk_id, "verdict": "needs_review"}
 
-    while True:
-        attempt += 1
+    # P2c: WAV format check
+    try:
+        p2c_result = await run_p2c_check(chunk_id)
+    except Exception:
+        log.exception("P2c check failed for chunk %s", chunk_id)
+        await _set_chunk_status(chunk_id, "needs_review")
+        await _write_event(episode_id, chunk_id, "needs_review", {"reason": "P2c check exception"})
+        return {"chunk_id": chunk_id, "verdict": "needs_review"}
 
-        # P2: synthesize
-        try:
-            p2_result = await run_p2_synth(chunk_id, params=current_params)
-        except Exception:
-            log.exception("P2 synth failed for chunk %s (attempt %d)", chunk_id, attempt)
-            if attempt >= repair_config.max_total_attempts:
-                await _set_chunk_status(chunk_id, "needs_review")
-                await _write_event(episode_id, chunk_id, "needs_review", {
-                    "total_attempts": attempt, "reason": "P2 synth exception",
-                })
-                return {"chunk_id": chunk_id, "verdict": "needs_review", "attempts": attempt, "level": level}
-            continue
+    if p2c_result.get("status") == "failed":
+        log.warning("P2c failed for chunk %s: %s", chunk_id, p2c_result.get("errors"))
+        await _set_chunk_status(chunk_id, "needs_review")
+        await _write_event(episode_id, chunk_id, "needs_review", {"reason": "P2c format check failed"})
+        return {"chunk_id": chunk_id, "verdict": "needs_review"}
 
-        # P2c: WAV format check
-        try:
-            p2c_result = await run_p2c_check(chunk_id)
-        except Exception:
-            log.exception("P2c check failed for chunk %s (attempt %d)", chunk_id, attempt)
-            if attempt >= repair_config.max_total_attempts:
-                await _set_chunk_status(chunk_id, "needs_review")
-                await _write_event(episode_id, chunk_id, "needs_review", {
-                    "total_attempts": attempt, "reason": "P2c check exception",
-                })
-                return {"chunk_id": chunk_id, "verdict": "needs_review", "attempts": attempt, "level": level}
-            continue
+    # P2v: ASR transcribe + quality verify
+    try:
+        p2v_result: P2vResult = await run_p2v_verify(chunk_id, language=language)
+    except Exception:
+        log.exception("P2v verify failed for chunk %s", chunk_id)
+        await _set_chunk_status(chunk_id, "needs_review")
+        await _write_event(episode_id, chunk_id, "needs_review", {"reason": "P2v verify exception"})
+        return {"chunk_id": chunk_id, "verdict": "needs_review"}
 
-        if p2c_result.get("status") == "failed":
-            log.warning("P2c failed for chunk %s: %s", chunk_id, p2c_result.get("errors"))
-            # Format error — retry P2 without counting as P2v attempt.
-            if attempt >= repair_config.max_total_attempts:
-                await _set_chunk_status(chunk_id, "needs_review")
-                await _write_event(episode_id, chunk_id, "needs_review", {
-                    "total_attempts": attempt, "reason": "P2c format check failed",
-                })
-                return {"chunk_id": chunk_id, "verdict": "needs_review", "attempts": attempt, "level": level}
-            continue
+    if p2v_result.verdict == "pass":
+        log.info("chunk %s verified", chunk_id)
+        return {"chunk_id": chunk_id, "verdict": "pass"}
 
-        # P2v: ASR transcribe + quality verify
-        try:
-            p2v_result: P2vResult = await run_p2v_verify(chunk_id, language=language)
-        except Exception:
-            log.exception("P2v verify failed for chunk %s (attempt %d)", chunk_id, attempt)
-            if attempt >= repair_config.max_total_attempts:
-                await _set_chunk_status(chunk_id, "needs_review")
-                await _write_event(episode_id, chunk_id, "needs_review", {
-                    "total_attempts": attempt, "reason": "P2v verify exception",
-                })
-                return {"chunk_id": chunk_id, "verdict": "needs_review", "attempts": attempt, "level": level}
-            continue
-
-        if p2v_result.verdict == "pass":
-            log.info("chunk %s verified on attempt %d (level %d)", chunk_id, attempt, level)
-            return {"chunk_id": chunk_id, "verdict": "pass", "attempts": attempt, "level": level}
-
-        # P2v failed — decide repair strategy.
-        repair = decide_repair(attempt, level, p2v_result, repair_config, current_params)
-
-        await _write_event(episode_id, chunk_id, "repair_decided", {
-            "attempt": attempt,
-            "level": level,
-            "action": repair.action,
-            "reason": repair.reason,
-        })
-
-        if repair.action == "stop":
-            await _set_chunk_status(chunk_id, "needs_review")
-            await _write_event(episode_id, chunk_id, "needs_review", {
-                "total_attempts": attempt,
-            })
-            log.warning(
-                "chunk %s → needs_review after %d attempts: %s",
-                chunk_id, attempt, repair.reason,
-            )
-            return {"chunk_id": chunk_id, "verdict": "needs_review", "attempts": attempt, "level": level}
-
-        # Apply repair: update level + params.
-        level = repair.level
-        if repair.params_override:
-            current_params = {**current_params, **repair.params_override}
+    # P2v quality check failed → needs_review immediately
+    await _set_chunk_status(chunk_id, "needs_review")
+    await _write_event(episode_id, chunk_id, "needs_review", {"reason": "P2v quality check failed"})
+    log.warning("chunk %s → needs_review (quality check failed)", chunk_id)
+    return {"chunk_id": chunk_id, "verdict": "needs_review"}
 
 
 async def _run_synthesize(
@@ -240,8 +190,6 @@ async def _run_synthesize(
         ep = await ep_repo.get(episode_id)
         ep_config = (ep.config if ep else None) or {}
 
-    # Parse repair config from episode.config.repair (or defaults).
-    repair_config = RepairConfig(**(ep_config.get("repair", {})))
     tts_config = {k: v for k, v in ep_config.items() if k != "repair"}
 
     # Filter to requested chunk_ids if provided
@@ -265,8 +213,7 @@ async def _run_synthesize(
         [await f.result() for f in p1c_futures]
         log.info("P1c complete: %d chunks validated", len(need_p2_ids))
 
-    # Per-chunk synth loop — chunks run in parallel, each with its own
-    # repair loop (L0/L1 auto-retry).
+    # Per-chunk synth — single pass P2→P2c→P2v, no auto-retry.
     if need_p2_ids:
         p2_params = tts_config if tts_config else {}
         loop_tasks = [
@@ -275,7 +222,6 @@ async def _run_synthesize(
                 chunk_id=cid,
                 base_params=p2_params,
                 language=language,
-                repair_config=repair_config,
             )
             for cid in need_p2_ids
         ]
@@ -370,7 +316,6 @@ async def _run_retry_failed(
         ep = await ep_repo.get(episode_id)
         ep_config = (ep.config if ep else None) or {}
 
-    repair_config = RepairConfig(**(ep_config.get("repair", {})))
     tts_config = {k: v for k, v in ep_config.items() if k != "repair"}
 
     retry_targets = [c for c in all_chunks if c.status in ("failed", "needs_review")]
@@ -385,7 +330,6 @@ async def _run_retry_failed(
     p1c_futures = p1c_check.map(retry_ids)
     [await f.result() for f in p1c_futures]
 
-    # Per-chunk synth loop with repair.
     p2_params = tts_config if tts_config else {}
     loop_tasks = [
         _synth_one_chunk(
@@ -393,7 +337,6 @@ async def _run_retry_failed(
             chunk_id=cid,
             base_params=p2_params,
             language=language,
-            repair_config=repair_config,
         )
         for cid in retry_ids
     ]
@@ -442,7 +385,6 @@ async def _run_regenerate(
         ep = await ep_repo.get(episode_id)
         ep_config = (ep.config if ep else None) or {}
 
-    repair_config = RepairConfig(**(ep_config.get("repair", {})))
     tts_config = {k: v for k, v in ep_config.items() if k != "repair"}
 
     # P1 clears chunks (DELETE + bulk_insert)
@@ -455,7 +397,6 @@ async def _run_regenerate(
     p1c_futures = p1c_check.map(chunk_ids)
     [await f.result() for f in p1c_futures]
 
-    # Per-chunk synth loop with repair.
     p2_params = tts_config if tts_config else {}
     loop_tasks = [
         _synth_one_chunk(
@@ -463,7 +404,6 @@ async def _run_regenerate(
             chunk_id=cid,
             base_params=p2_params,
             language=language,
-            repair_config=repair_config,
         )
         for cid in chunk_ids
     ]
