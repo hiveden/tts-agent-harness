@@ -169,11 +169,11 @@ function ConfigForm({
           </select>
         </div>
         <div>
-          <label className="text-xs text-neutral-600 flex items-center gap-1 mb-1">Temperature <HelpTip>控制表现力（expressiveness）。值越高变化越丰富，越低越一致稳定。范围 0-1，默认 0.7。发音不稳定时可降到 0.3-0.5。</HelpTip></label>
+          <label className="text-xs text-neutral-600 flex items-center gap-1 mb-1">Temperature <HelpTip>控制表现力。值越高变化越丰富，越低越一致稳定。范围 0-1，默认 0.7。英文发音不准时降到 0.3-0.5 可显著改善。</HelpTip></label>
           <input type="number" step="0.1" min="0" max="2" value={form.temperature} onChange={(e) => set("temperature", e.target.value)} className={inputClass} />
         </div>
         <div>
-          <label className="text-xs text-neutral-600 flex items-center gap-1 mb-1">Top P <HelpTip>核采样（nucleus sampling）控制多样性。与 temperature 配合使用，范围 0-1，默认 0.7。降低可减少发音随机性。</HelpTip></label>
+          <label className="text-xs text-neutral-600 flex items-center gap-1 mb-1">Top P <HelpTip>核采样控制多样性。与 temperature 配合，范围 0-1，默认 0.7。英文发音不准时和 temperature 一起降到 0.5，减少随机性。</HelpTip></label>
           <input type="number" step="0.1" min="0" max="1" value={form.top_p} onChange={(e) => set("top_p", e.target.value)} className={inputClass} />
         </div>
         <div>
