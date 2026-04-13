@@ -587,9 +587,9 @@ async def run_episode(
                 for cid in target_ids:
                     if mode == "synthesize":
                         chunk_obj = next((c for c in target if c.id == cid), None)
-                        if chunk_obj and chunk_obj.selected_take_id:
-                            _log.info("P2 skip %s (has take)", cid)
-                            await _mark_stage(cid, "p2", "ok", context={"skipped": True, "reason": "has selected_take"})
+                        if chunk_obj and chunk_obj.status == "verified":
+                            _log.info("P2 skip %s (verified)", cid)
+                            await _mark_stage(cid, "p2", "ok", context={"skipped": True, "reason": "already verified"})
                             continue
                     async with _session_factory() as _s:
                         _chunk = await ChunkRepo(_s).get(cid)
@@ -618,12 +618,9 @@ async def run_episode(
                 for cid in target_ids:
                     if cid in failed_chunks:
                         continue
-                    # Skip chunks without take (P2 was skipped but already verified)
                     async with _session_factory() as _s:
                         _ch = await ChunkRepo(_s).get(cid)
-                        if not _ch or not _ch.selected_take_id:
-                            continue
-                        if _ch.status not in ("synth_done", "verified"):
+                        if not _ch or not _ch.selected_take_id or _ch.status != "synth_done":
                             continue
                     _log.info("P2c check %s", cid)
                     t0 = datetime.now(timezone.utc)
@@ -655,7 +652,7 @@ async def run_episode(
                         continue
                     async with _session_factory() as _s:
                         _ch = await ChunkRepo(_s).get(cid)
-                        if not _ch or _ch.status not in ("synth_done", "verified"):
+                        if not _ch or _ch.status != "synth_done":
                             continue
                     _log.info("P2v verify %s", cid)
                     t0 = datetime.now(timezone.utc)
