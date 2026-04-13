@@ -20,6 +20,7 @@ interface HarnessState {
   edits: EditBatch;
   drawerOpen: { cid: string; stage: StageName } | null;
   helpOpen: boolean;
+  sidebarCollapsed: boolean;
 
   // --- UI actions ---
   selectEpisode: (id: string) => void;
@@ -31,6 +32,7 @@ interface HarnessState {
   openDrawer: (cid: string, stage: StageName) => void;
   closeDrawer: () => void;
   setHelpOpen: (open: boolean) => void;
+  setSidebarCollapsed: (collapsed: boolean) => void;
 
   // --- Computed ---
   dirtyCount: () => { tts: number; sub: number };
@@ -56,6 +58,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   edits: {},
   drawerOpen: null,
   helpOpen: false,
+  sidebarCollapsed: typeof window !== "undefined" ? window.localStorage.getItem("tts-harness:sidebarCollapsed") === "true" : false,
 
   // --- UI actions ---
   selectEpisode: (id) => {
@@ -80,6 +83,11 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   closeDrawer: () => set({ drawerOpen: null }),
 
   setHelpOpen: (open) => set({ helpOpen: open }),
+
+  setSidebarCollapsed: (collapsed) => {
+    set({ sidebarCollapsed: collapsed });
+    if (typeof window !== "undefined") window.localStorage.setItem("tts-harness:sidebarCollapsed", String(collapsed));
+  },
 
   // --- Computed ---
   dirtyCount: () => {

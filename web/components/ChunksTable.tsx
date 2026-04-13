@@ -57,7 +57,7 @@ export function ChunksTable({
   }
 
   return (
-    <div className="flex flex-col h-full">
+    <div className="flex flex-col h-full overflow-x-auto">
       {/* Sticky header */}
       <div
         className="grid text-[11px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wide border-b border-neutral-100 dark:border-neutral-700 shrink-0"
