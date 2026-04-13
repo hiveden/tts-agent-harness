@@ -50,7 +50,7 @@ export function ChunksTable({
 
   if (chunks.length === 0) {
     return (
-      <div className="px-6 py-12 text-center text-sm text-neutral-400">
+      <div className="px-6 py-12 text-center text-sm text-neutral-400 dark:text-neutral-500">
         还没有 chunks。点 Run 开始第一次合成。
       </div>
     );
@@ -60,7 +60,7 @@ export function ChunksTable({
     <div className="flex flex-col h-full">
       {/* Sticky header */}
       <div
-        className="grid text-[11px] text-neutral-400 uppercase tracking-wide border-b border-neutral-100 shrink-0"
+        className="grid text-[11px] text-neutral-400 dark:text-neutral-500 uppercase tracking-wide border-b border-neutral-100 dark:border-neutral-700 shrink-0"
         style={{ gridTemplateColumns: GRID_COLS }}
       >
         <div className="text-left font-medium px-6 py-2">ID</div>
@@ -70,14 +70,14 @@ export function ChunksTable({
         <div className="text-left font-medium py-2 pr-6">
           <div className="flex items-center gap-2">
             <span>{displayMode === "subtitle" ? "Subtitle" : "TTS Source"}</span>
-            <div className="inline-flex rounded border border-neutral-200 overflow-hidden normal-case">
+            <div className="inline-flex rounded border border-neutral-200 dark:border-neutral-700 overflow-hidden normal-case">
               <button
                 type="button"
                 onClick={() => setDisplayMode("subtitle")}
                 className={`px-1.5 py-0.5 text-[10px] font-normal ${
                   displayMode === "subtitle"
-                    ? "bg-neutral-900 text-white"
-                    : "bg-white text-neutral-500 hover:bg-neutral-100"
+                    ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900"
+                    : "bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 }`}
               >
                 字幕
@@ -85,10 +85,10 @@ export function ChunksTable({
               <button
                 type="button"
                 onClick={() => setDisplayMode("tts")}
-                className={`px-1.5 py-0.5 text-[10px] font-normal border-l border-neutral-200 ${
+                className={`px-1.5 py-0.5 text-[10px] font-normal border-l border-neutral-200 dark:border-neutral-700 ${
                   displayMode === "tts"
-                    ? "bg-neutral-900 text-white"
-                    : "bg-white text-neutral-500 hover:bg-neutral-100"
+                    ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900"
+                    : "bg-white dark:bg-neutral-800 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-700"
                 }`}
               >
                 TTS源

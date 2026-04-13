@@ -43,11 +43,11 @@ function statusIcon(status: ChunkStatus) {
     case "needs_review":
       return <span className="text-amber-500">🔍</span>;
     case "pending":
-      return <span className="text-neutral-300">○</span>;
+      return <span className="text-neutral-300 dark:text-neutral-600">○</span>;
     case "failed":
       return <span className="text-red-500">✗</span>;
     default:
-      return <span className="text-neutral-300">○</span>;
+      return <span className="text-neutral-300 dark:text-neutral-600">○</span>;
   }
 }
 
@@ -148,28 +148,28 @@ export const ChunkRow = memo(function ChunkRow({
   };
 
   const rowBg = isPlaying
-    ? "bg-blue-50 shadow-[inset_3px_0_0_#2563eb]"
+    ? "bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#2563eb]"
     : isEditing
-      ? "bg-neutral-50"
+      ? "bg-neutral-50 dark:bg-neutral-800"
       : chunk.status === "needs_review"
-        ? "bg-amber-50 hover:bg-amber-100/60"
+        ? "bg-amber-50 dark:bg-amber-900/20 hover:bg-amber-100/60 dark:hover:bg-amber-900/30"
         : isDirty
-          ? "bg-amber-50/30 hover:bg-amber-50/50"
-          : "hover:bg-neutral-50";
+          ? "bg-amber-50/30 dark:bg-amber-900/10 hover:bg-amber-50/50 dark:hover:bg-amber-900/20"
+          : "hover:bg-neutral-50 dark:hover:bg-neutral-800";
 
   let dirtyBadge: string | null = null;
   if (dirty === "tts") dirtyBadge = "TTS dirty";
   else if (dirty === "subtitle") dirtyBadge = "SUB dirty";
   else if (dirty === "both") dirtyBadge = "TTS+SUB dirty";
 
-  const baseColor = isDirty ? "text-amber-900" : "text-neutral-700";
+  const baseColor = isDirty ? "text-amber-900 dark:text-amber-200" : "text-neutral-700 dark:text-neutral-300";
 
   return (
     <div
-      className={`grid border-b border-neutral-100 text-sm ${rowBg}`}
+      className={`grid border-b border-neutral-100 dark:border-neutral-700 text-sm ${rowBg}`}
       style={{ gridTemplateColumns: GRID_COLS }}
     >
-      <div className="px-6 py-2.5 font-mono text-[11px] text-neutral-500 self-start">
+      <div className="px-6 py-2.5 font-mono text-[11px] text-neutral-500 dark:text-neutral-400 self-start">
         {chunk.id}
         {hasSubField ? (
           <span
@@ -181,7 +181,7 @@ export const ChunkRow = memo(function ChunkRow({
         ) : null}
       </div>
       <div className="py-2.5 self-start">{statusIcon(chunk.status)}</div>
-      <div className="py-2.5 self-start text-[11px] text-neutral-500 font-mono">
+      <div className="py-2.5 self-start text-[11px] text-neutral-500 dark:text-neutral-400 font-mono">
         {durationS > 0 ? `${durationS.toFixed(1)}s` : "--"}
       </div>
       <div className="py-2.5 self-start">
@@ -207,9 +207,9 @@ export const ChunkRow = memo(function ChunkRow({
             title={isDirty ? "Has staged changes, Apply first" : ""}
             className={`w-7 h-7 inline-flex items-center justify-center rounded ${
               canPlay
-                ? "hover:bg-neutral-200 text-neutral-700"
-                : "text-neutral-300 cursor-not-allowed"
-            } ${isPlaying ? "bg-neutral-900 text-white hover:bg-neutral-800" : ""}`}
+                ? "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+                : "text-neutral-300 dark:text-neutral-600 cursor-not-allowed"
+            } ${isPlaying ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200" : ""}`}
           >
             {isPlaying ? "⏸" : "▶"}
           </button>
@@ -228,7 +228,7 @@ export const ChunkRow = memo(function ChunkRow({
             />
           </div>
           {dirtyBadge ? (
-            <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-amber-100 text-amber-700 rounded shrink-0">
+            <span className="ml-2 text-[10px] px-1.5 py-0.5 bg-amber-100 dark:bg-amber-800/30 text-amber-700 dark:text-amber-300 rounded shrink-0">
               {dirtyBadge}
             </span>
           ) : null}
@@ -251,7 +251,7 @@ export const ChunkRow = memo(function ChunkRow({
           />
         ) : null}
         {chunk.attemptHistory && chunk.attemptHistory.length > 0 && (
-          <div className="mt-1 border border-neutral-200 rounded overflow-hidden">
+          <div className="mt-1 border border-neutral-200 dark:border-neutral-700 rounded overflow-hidden">
             {chunk.attemptHistory.map((att, i) => (
               <RetryRow
                 key={`${att.attempt}-${att.timestamp}`}
@@ -285,8 +285,8 @@ export const ChunkRow = memo(function ChunkRow({
           title={isEditing ? "Close edit" : "Edit"}
           className={`w-7 h-7 inline-flex items-center justify-center rounded ${
             isEditing
-              ? "bg-neutral-900 text-white hover:bg-neutral-800"
-              : "hover:bg-neutral-200 text-neutral-700"
+              ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
+              : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
           }`}
         >
           {isEditing ? "✕" : "✎"}

@@ -70,9 +70,9 @@ export function KaraokeSubtitle({
       {chars.map((ch, i) => {
         const played = isPlaying && i < cut;
         const colorClass = played
-          ? "text-neutral-900 font-medium"
+          ? "text-neutral-900 dark:text-neutral-100 font-medium"
           : isPlaying
-            ? "text-neutral-300"
+            ? "text-neutral-300 dark:text-neutral-600"
             : baseColorClass;
         return (
           <span
@@ -80,7 +80,7 @@ export function KaraokeSubtitle({
             onClick={onSeek ? () => onSeek(charTime(i)) : undefined}
             className={`${colorClass} ${
               onSeek
-                ? "cursor-pointer hover:bg-blue-100 hover:rounded-sm"
+                ? "cursor-pointer hover:bg-blue-100 dark:hover:bg-blue-900/30 hover:rounded-sm"
                 : ""
             }`}
           >
@@ -89,7 +89,7 @@ export function KaraokeSubtitle({
         );
       })}
       {isPlaying ? (
-        <span className="ml-2 text-[10px] text-neutral-400 font-mono">
+        <span className="ml-2 text-[10px] text-neutral-400 dark:text-neutral-500 font-mono">
           {elapsed.toFixed(1)}s / {durationS.toFixed(1)}s
         </span>
       ) : null}

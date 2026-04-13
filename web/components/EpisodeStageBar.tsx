@@ -61,8 +61,8 @@ export function EpisodeStageBar({ chunks, onStageRetry }: Props) {
   if (chunks.length === 0) return null;
 
   return (
-    <div className="px-6 py-1.5 border-b border-neutral-100 bg-neutral-50 flex items-center gap-1 shrink-0">
-      <span className="text-[10px] text-neutral-400 mr-2 uppercase tracking-wide">Pipeline</span>
+    <div className="px-6 py-1.5 border-b border-neutral-100 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 flex items-center gap-1 shrink-0">
+      <span className="text-[10px] text-neutral-400 dark:text-neutral-500 mr-2 uppercase tracking-wide">Pipeline</span>
       {CHUNK_STAGES.map((stage, idx) => {
         const agg = aggregate(chunks, stage);
         const color = pillColor(agg);
@@ -70,7 +70,7 @@ export function EpisodeStageBar({ chunks, onStageRetry }: Props) {
         const clickable = agg.failed > 0 && onStageRetry;
         return (
           <div key={stage} className="inline-flex items-center">
-            {idx > 0 && <span className="inline-block w-3 h-px bg-neutral-300 mx-0.5" />}
+            {idx > 0 && <span className="inline-block w-3 h-px bg-neutral-300 dark:bg-neutral-600 mx-0.5" />}
             <button
               type="button"
               disabled={!clickable}

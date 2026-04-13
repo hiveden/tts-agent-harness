@@ -38,7 +38,7 @@ function isGate(stage: StageName): boolean {
 }
 
 function stageColorClasses(sr: StageRun | undefined): string {
-  if (!sr || sr.status === "pending") return "bg-neutral-200 text-neutral-500";
+  if (!sr || sr.status === "pending") return "bg-neutral-200 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400";
   if (sr.status === "running") return "bg-blue-500 text-white animate-pulse";
   if (sr.status === "ok") return "bg-emerald-500 text-white";
   return "bg-red-500 text-white";
@@ -92,7 +92,7 @@ export function StagePipeline({
         return (
           <div key={stage} className="inline-flex items-center">
             {idx > 0 && (
-              <span aria-hidden className={`inline-block h-px ${connectorWidth} bg-neutral-300`} />
+              <span aria-hidden className={`inline-block h-px ${connectorWidth} bg-neutral-300 dark:bg-neutral-600`} />
             )}
             <button
               type="button"

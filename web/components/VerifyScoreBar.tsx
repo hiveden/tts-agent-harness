@@ -51,7 +51,7 @@ export function VerifyScoreBar({ scores }: Props) {
             <span className={`w-4 text-center font-bold ${scoreIconColor(v)}`}>
               {scoreIcon(v)}
             </span>
-            <div className="w-[120px] h-2 bg-neutral-200 rounded-full overflow-hidden">
+            <div className="w-[120px] h-2 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
               <div
                 className={`h-full rounded-full ${scoreColor(v)}`}
                 style={{ width: `${pct}%` }}
@@ -63,10 +63,10 @@ export function VerifyScoreBar({ scores }: Props) {
           </div>
         );
       })}
-      <div className="border-t border-neutral-200 pt-1 mt-1 flex items-center gap-1.5">
-        <span className="w-[80px] text-neutral-600 font-medium">综合</span>
+      <div className="border-t border-neutral-200 dark:border-neutral-700 pt-1 mt-1 flex items-center gap-1.5">
+        <span className="w-[80px] text-neutral-600 dark:text-neutral-400 font-medium">综合</span>
         <span className="w-4" />
-        <span className="font-mono font-bold text-neutral-700">
+        <span className="font-mono font-bold text-neutral-700 dark:text-neutral-300">
           {scores.weightedScore.toFixed(2)}
         </span>
         <span

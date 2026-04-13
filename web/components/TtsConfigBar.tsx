@@ -78,24 +78,24 @@ export function TtsConfigBar({ episodeId, config, onConfigSaved, onUpdateConfig 
 
   const field = (key: string, value: string) => (
     <span className="inline-flex items-center gap-1">
-      <span className="text-neutral-400">{key}=</span>
-      <span className={`font-mono ${hasOverride ? "text-blue-600" : "text-neutral-600"}`}>{value}</span>
+      <span className="text-neutral-400 dark:text-neutral-500">{key}=</span>
+      <span className={`font-mono ${hasOverride ? "text-blue-600 dark:text-blue-400" : "text-neutral-600 dark:text-neutral-400"}`}>{value}</span>
     </span>
   );
 
   return (
     <>
-      <div className="px-6 py-1.5 border-b border-neutral-200 bg-neutral-50 text-[11px] flex items-center gap-4 flex-wrap">
-        <span className="text-neutral-500 font-semibold shrink-0">TTS Config:</span>
+      <div className="px-6 py-1.5 border-b border-neutral-200 dark:border-neutral-700 bg-neutral-50 dark:bg-neutral-800 text-[11px] flex items-center gap-4 flex-wrap">
+        <span className="text-neutral-500 dark:text-neutral-400 font-semibold shrink-0">TTS Config:</span>
         {field("model", String(config.model ?? "s2-pro"))}
         {field("temperature", String(config.temperature ?? "0.7"))}
         {field("top_p", String(config.top_p ?? "0.7"))}
         {field("speed", `${config.speed ?? 1.15}x`)}
         {field("reference_id", String(config.reference_id || "(none)"))}
         <button type="button" onClick={() => setDialogOpen(true)}
-          className="ml-auto px-2 py-0.5 text-[11px] rounded border border-neutral-300 text-neutral-600 hover:bg-white hover:border-neutral-400"
+          className="ml-auto px-2 py-0.5 text-[11px] rounded border border-neutral-300 dark:border-neutral-600 text-neutral-600 dark:text-neutral-400 hover:bg-white dark:hover:bg-neutral-700 hover:border-neutral-400 dark:hover:border-neutral-500"
           title="编辑 TTS 配置">✎ 编辑</button>
-        {hasOverride && <span className="text-[10px] text-blue-600 font-mono">● override</span>}
+        {hasOverride && <span className="text-[10px] text-blue-600 dark:text-blue-400 font-mono">● override</span>}
       </div>
       {savedHint && (
         <div className="px-6 py-1 border-b border-emerald-200 bg-emerald-50 text-[11px] text-emerald-800 flex items-center gap-2">
@@ -151,7 +151,7 @@ function ConfigForm({
     } finally { setSaving(false); }
   }, [episodeId, form, onSaved, onUpdateConfig]);
 
-  const inputClass = "w-full px-2 py-1.5 text-xs border border-neutral-300 rounded font-mono focus:outline-none focus:ring-1 focus:ring-blue-400";
+  const inputClass = "w-full px-2 py-1.5 text-xs border border-neutral-300 dark:border-neutral-600 rounded font-mono bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-400";
 
   return (
     <>
@@ -187,9 +187,9 @@ function ConfigForm({
       </div>
 
       <DialogFooter>
-        <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-neutral-600 hover:bg-neutral-100 rounded">取消</button>
+        <button type="button" onClick={onClose} className="px-3 py-1.5 text-xs text-neutral-600 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded">取消</button>
         <button type="button" onClick={handleSave} disabled={saving}
-          className={`ml-auto px-4 py-1.5 text-xs rounded ${saving ? "bg-neutral-200 text-neutral-400" : "bg-neutral-900 text-white hover:bg-neutral-800"}`}>
+          className={`ml-auto px-4 py-1.5 text-xs rounded ${saving ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-400" : "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"}`}>
           {saving ? "保存中..." : "保存配置"}
         </button>
       </DialogFooter>

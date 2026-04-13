@@ -52,18 +52,18 @@ export function StageProgress({
       : null;
 
   // 颜色 / 文本
-  let bg = "bg-neutral-50";
-  let border = "border-neutral-200";
+  let bg = "bg-neutral-50 dark:bg-neutral-800";
+  let border = "border-neutral-200 dark:border-neutral-700";
   let icon = "○";
-  let iconColor = "text-neutral-400";
+  let iconColor = "text-neutral-400 dark:text-neutral-500";
   let mainText = "未运行";
   let detailText: string | null = null;
-  let barColor = "bg-neutral-300";
+  let barColor = "bg-neutral-300 dark:bg-neutral-600";
   let indeterminate = false;
 
   if (running || status === "running") {
-    bg = "bg-blue-50";
-    border = "border-blue-200";
+    bg = "bg-blue-50 dark:bg-blue-900/20";
+    border = "border-blue-200 dark:border-blue-800";
     icon = "⏵";
     iconColor = "text-blue-600 animate-pulse";
     mainText = stageName ? `Stage ${stageName}` : "Pipeline 进行中";
@@ -75,8 +75,8 @@ export function StageProgress({
     barColor = "bg-blue-500";
     indeterminate = pct == null;
   } else if (status === "failed") {
-    bg = "bg-red-50";
-    border = "border-red-200";
+    bg = "bg-red-50 dark:bg-red-900/20";
+    border = "border-red-200 dark:border-red-800";
     icon = "✗";
     iconColor = "text-red-600";
     mainText = stageName
@@ -85,8 +85,8 @@ export function StageProgress({
     detailText = lastLogLine?.trim() || null;
     barColor = "bg-red-500";
   } else if (status === "done") {
-    bg = "bg-emerald-50";
-    border = "border-emerald-200";
+    bg = "bg-emerald-50 dark:bg-emerald-900/20";
+    border = "border-emerald-200 dark:border-emerald-800";
     icon = "✓";
     iconColor = "text-emerald-600";
     mainText = `Done · ${totalChunks} chunks`;
@@ -94,7 +94,7 @@ export function StageProgress({
     barColor = "bg-emerald-500";
   } else if (status === "ready") {
     icon = "○";
-    iconColor = "text-neutral-400";
+    iconColor = "text-neutral-400 dark:text-neutral-500";
     mainText = `已切分 · ${totalChunks} chunks`;
     detailText = "点「合成全部」开始 TTS 合成";
   }
@@ -106,14 +106,14 @@ export function StageProgress({
       <span className={`text-lg leading-none ${iconColor}`}>{icon}</span>
       <div className="flex-1 min-w-0">
         <div className="flex items-baseline gap-2">
-          <span className="text-sm font-medium text-neutral-900">{mainText}</span>
+          <span className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{mainText}</span>
           {detailText ? (
-            <span className="text-xs text-neutral-500 truncate">{detailText}</span>
+            <span className="text-xs text-neutral-500 dark:text-neutral-400 truncate">{detailText}</span>
           ) : null}
         </div>
         {/* 进度条:running 时一定显示,done/failed 也显示一个静态值 */}
         {(running || status === "running") && (
-          <div className="mt-1.5 h-1 bg-neutral-200 rounded-full overflow-hidden">
+          <div className="mt-1.5 h-1 bg-neutral-200 dark:bg-neutral-700 rounded-full overflow-hidden">
             {indeterminate ? (
               <div className={`h-full ${barColor} animate-pulse`} style={{ width: "30%" }} />
             ) : (
@@ -126,7 +126,7 @@ export function StageProgress({
         )}
       </div>
       {pct != null && (running || status === "running") ? (
-        <span className="text-xs text-neutral-600 font-mono shrink-0">
+        <span className="text-xs text-neutral-600 dark:text-neutral-400 font-mono shrink-0">
           {pct.toFixed(0)}%
         </span>
       ) : null}

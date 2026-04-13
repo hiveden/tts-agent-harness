@@ -10,9 +10,9 @@ interface Props {
 }
 
 const TYPE_COLOR: Record<string, string> = {
-  hook: "bg-amber-50 text-amber-700 border-amber-200",
-  content: "bg-blue-50 text-blue-700 border-blue-200",
-  cta: "bg-emerald-50 text-emerald-700 border-emerald-200",
+  hook: "bg-amber-50 dark:bg-amber-900/20 text-amber-700 dark:text-amber-400 border-amber-200 dark:border-amber-800",
+  content: "bg-blue-50 dark:bg-blue-900/20 text-blue-700 dark:text-blue-400 border-blue-200 dark:border-blue-800",
+  cta: "bg-emerald-50 dark:bg-emerald-900/20 text-emerald-700 dark:text-emerald-400 border-emerald-200 dark:border-emerald-800",
 };
 
 export function ScriptPreview({ title, description, segments }: Props) {
@@ -21,9 +21,9 @@ export function ScriptPreview({ title, description, segments }: Props) {
   return (
     <div className="px-6 py-4 max-w-4xl">
       {/* Header */}
-      <div className="mb-4 pb-4 border-b border-neutral-200">
+      <div className="mb-4 pb-4 border-b border-neutral-200 dark:border-neutral-700">
         {title ? (
-          <h3 className="text-base font-semibold text-neutral-900 mb-1">
+          <h3 className="text-base font-semibold text-neutral-900 dark:text-neutral-100 mb-1">
             {title}
           </h3>
         ) : null}
@@ -49,7 +49,7 @@ export function ScriptPreview({ title, description, segments }: Props) {
           return (
             <div
               key={i}
-              className="border border-neutral-200 rounded-lg p-3 hover:border-neutral-300 transition-colors"
+              className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
             >
               <div className="flex items-baseline gap-2 mb-2">
                 <span className="font-mono text-[11px] text-neutral-500 w-6">
@@ -69,7 +69,7 @@ export function ScriptPreview({ title, description, segments }: Props) {
                   {seg.text.length} chars
                 </span>
               </div>
-              <p className="text-sm text-neutral-700 leading-relaxed">
+              <p className="text-sm text-neutral-700 dark:text-neutral-300 leading-relaxed">
                 {cleanText}
               </p>
             </div>

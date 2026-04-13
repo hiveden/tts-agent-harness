@@ -67,7 +67,7 @@ export function RetryRow({
 
   return (
     <div
-      className={`flex items-center gap-2 px-2 py-1 text-[11px] border-b border-neutral-100 ${rowBg}`}
+      className={`flex items-center gap-2 px-2 py-1 text-[11px] border-b border-neutral-100 dark:border-neutral-700 ${rowBg}`}
     >
       {/* rr-indent: attempt # + level + dashed connector */}
       <div className="flex items-center gap-1 w-[172px] shrink-0">
@@ -77,7 +77,7 @@ export function RetryRow({
         <span className="font-mono text-neutral-400">
           L{attempt.level}
         </span>
-        <span className="flex-1 border-b border-dashed border-neutral-300" />
+        <span className="flex-1 border-b border-dashed border-neutral-300 dark:border-neutral-600" />
       </div>
 
       {/* rr-pipeline: mini P2/P2c/P2v pills */}
@@ -126,7 +126,7 @@ export function RetryRow({
           <button
             type="button"
             onClick={onUse}
-            className="px-1.5 py-0.5 rounded bg-neutral-900 text-white hover:bg-neutral-800 text-[10px]"
+            className="px-1.5 py-0.5 rounded bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200 text-[10px]"
           >
             Use
           </button>

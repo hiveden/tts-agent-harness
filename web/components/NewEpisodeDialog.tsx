@@ -55,9 +55,9 @@ export function NewEpisodeDialog({ open, onClose, onCreate }: Props) {
 
   return (
     <div className="fixed inset-0 bg-black/30 flex items-center justify-center z-50">
-      <div className="bg-white rounded-lg shadow-xl w-96 p-5">
+      <div className="bg-white dark:bg-neutral-900 rounded-lg shadow-xl dark:shadow-neutral-900 w-96 p-5">
         <h2 className="font-semibold mb-4">New Episode</h2>
-        <label className="block text-xs text-neutral-500 mb-1">
+        <label className="block text-xs text-neutral-500 dark:text-neutral-400 mb-1">
           Episode ID
         </label>
         <input
@@ -65,9 +65,9 @@ export function NewEpisodeDialog({ open, onClose, onCreate }: Props) {
           value={id}
           onChange={(e) => setId(e.target.value)}
           placeholder="ch06"
-          className="w-full border border-neutral-300 rounded px-2 py-1.5 text-sm mb-3 focus:outline-none focus:border-neutral-900"
+          className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-2 py-1.5 text-sm mb-3 bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:border-neutral-900 dark:focus:border-neutral-400"
         />
-        <label className="block text-xs text-neutral-500 mb-1">
+        <label className="block text-xs text-neutral-500 dark:text-neutral-400 mb-1">
           script.json
         </label>
         <div
@@ -78,10 +78,10 @@ export function NewEpisodeDialog({ open, onClose, onCreate }: Props) {
           className={[
             "w-full border-2 border-dashed rounded-lg px-4 py-6 mb-4 cursor-pointer transition-colors text-center",
             dragging
-              ? "border-blue-400 bg-blue-50"
+              ? "border-blue-400 bg-blue-50 dark:bg-blue-900/20"
               : file
-                ? "border-emerald-300 bg-emerald-50"
-                : "border-neutral-300 hover:border-neutral-400 hover:bg-neutral-50",
+                ? "border-emerald-300 bg-emerald-50 dark:bg-emerald-900/20"
+                : "border-neutral-300 dark:border-neutral-600 hover:border-neutral-400 hover:bg-neutral-50 dark:hover:bg-neutral-800",
           ].join(" ")}
         >
           {file ? (
@@ -120,7 +120,7 @@ export function NewEpisodeDialog({ open, onClose, onCreate }: Props) {
           <button
             type="button"
             onClick={onClose}
-            className="px-3 py-1.5 text-sm rounded hover:bg-neutral-100"
+            className="px-3 py-1.5 text-sm rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
           >
             Cancel
           </button>
@@ -128,7 +128,7 @@ export function NewEpisodeDialog({ open, onClose, onCreate }: Props) {
             type="button"
             onClick={handleCreate}
             disabled={!id.trim() || !file || submitting}
-            className="px-3 py-1.5 text-sm bg-neutral-900 text-white rounded hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+            className="px-3 py-1.5 text-sm bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
           >
             {submitting ? "Creating..." : "Create"}
           </button>

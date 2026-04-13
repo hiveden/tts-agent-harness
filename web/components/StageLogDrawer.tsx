@@ -34,7 +34,7 @@ function statusBadge(sr: StageRun | undefined) {
   const base = "text-[10px] font-mono uppercase px-1.5 py-0.5 rounded tracking-wide";
   const status = sr?.status ?? "pending";
   switch (status) {
-    case "pending": return <span className={`${base} bg-neutral-200 text-neutral-600`}>pending</span>;
+    case "pending": return <span className={`${base} bg-neutral-200 dark:bg-neutral-700 text-neutral-600 dark:text-neutral-400`}>pending</span>;
     case "running": return <span className={`${base} bg-blue-500 text-white animate-pulse`}>running</span>;
     case "ok": return <span className={`${base} bg-emerald-500 text-white`}>ok</span>;
     case "failed": return <span className={`${base} bg-red-500 text-white`}>failed</span>;
@@ -58,12 +58,12 @@ export function StageLogDrawer({
       <SheetContent side="right">
         <SheetHeader>
           <SheetTitle className="sr-only">{STAGE_LABELS[stage]} — {chunkId}</SheetTitle>
-          <span className="font-mono text-xs text-neutral-700">{chunkId}</span>
-          <span className="text-neutral-300">·</span>
+          <span className="font-mono text-xs text-neutral-700 dark:text-neutral-300">{chunkId}</span>
+          <span className="text-neutral-300 dark:text-neutral-600">·</span>
           <span className="font-mono text-xs font-semibold">{STAGE_LABELS[stage]}</span>
           <span className="ml-1">{statusBadge(stageRun)}</span>
           <SheetClose asChild>
-            <button type="button" className="ml-auto w-7 h-7 inline-flex items-center justify-center rounded hover:bg-neutral-100 text-neutral-500" title="关闭">✕</button>
+            <button type="button" className="ml-auto w-7 h-7 inline-flex items-center justify-center rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400" title="关闭">✕</button>
           </SheetClose>
         </SheetHeader>
 
@@ -71,12 +71,12 @@ export function StageLogDrawer({
         {(() => {
           const info = STAGE_INFO[stage];
           return (
-            <details className="border-b border-neutral-200 text-xs shrink-0" open>
-              <summary className="px-4 py-2 bg-neutral-50 cursor-pointer hover:bg-neutral-100 text-neutral-700 font-semibold flex items-center gap-1.5">
+            <details className="border-b border-neutral-200 dark:border-neutral-700 text-xs shrink-0" open>
+              <summary className="px-4 py-2 bg-neutral-50 dark:bg-neutral-800 cursor-pointer hover:bg-neutral-100 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300 font-semibold flex items-center gap-1.5">
                 <span className="text-neutral-400">ℹ</span>
                 <span>{info.title}</span>
               </summary>
-              <div className="px-4 py-2.5 bg-white text-neutral-700 space-y-1.5">
+              <div className="px-4 py-2.5 bg-white dark:bg-neutral-900 text-neutral-700 dark:text-neutral-300 space-y-1.5">
                 <p className="leading-relaxed">{info.description}</p>
                 <div className="grid grid-cols-[auto_1fr] gap-x-2 gap-y-0.5 text-[11px] mt-2">
                   <span className="text-neutral-400">输入</span>
@@ -105,7 +105,7 @@ export function StageLogDrawer({
         {logLoading ? (
           <div className="flex-1 flex items-center justify-center text-xs text-neutral-400">加载日志中…</div>
         ) : log !== "" ? (
-          <pre className="text-xs font-mono whitespace-pre-wrap p-4 overflow-auto flex-1 bg-neutral-50">{log}</pre>
+          <pre className="text-xs font-mono whitespace-pre-wrap p-4 overflow-auto flex-1 bg-neutral-50 dark:bg-neutral-800 dark:text-neutral-300">{log}</pre>
         ) : (
           <div className="flex-1 overflow-auto p-4 text-xs">
             {stageRun ? (
@@ -131,15 +131,15 @@ export function StageLogDrawer({
                 {context.request && (
                   <div>
                     <div className="text-neutral-500 font-semibold text-[11px] mb-1">Request 参数</div>
-                    <pre className="text-[10px] font-mono bg-neutral-100 rounded p-2 whitespace-pre-wrap overflow-auto max-h-40">
+                    <pre className="text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800 rounded p-2 whitespace-pre-wrap overflow-auto max-h-40">
                       {JSON.stringify(context.request, null, 2)}
                     </pre>
                   </div>
                 )}
                 {context.response && (
                   <div>
-                    <div className="text-neutral-500 font-semibold text-[11px] mb-1">Response 产物</div>
-                    <pre className="text-[10px] font-mono bg-neutral-100 rounded p-2 whitespace-pre-wrap overflow-auto max-h-40">
+                    <div className="text-neutral-500 dark:text-neutral-400 font-semibold text-[11px] mb-1">Response 产物</div>
+                    <pre className="text-[10px] font-mono bg-neutral-100 dark:bg-neutral-800 rounded p-2 whitespace-pre-wrap overflow-auto max-h-40">
                       {JSON.stringify(context.response, null, 2)}
                     </pre>
                   </div>
@@ -154,17 +154,17 @@ export function StageLogDrawer({
           </div>
         )}
 
-        <div className="border-t border-neutral-200 px-4 py-3 shrink-0 flex items-center gap-3">
-          <div className="text-[11px] text-neutral-400 font-mono">
+        <div className="border-t border-neutral-200 dark:border-neutral-700 px-4 py-3 shrink-0 flex items-center gap-3">
+          <div className="text-[11px] text-neutral-400 dark:text-neutral-500 font-mono">
             attempt {attempt}{durationMs != null ? ` · ${durationMs}ms` : ""}
           </div>
           <div className="ml-auto flex items-center gap-3">
             <button type="button" onClick={() => onRetry(false)} disabled={retrying}
-              className={`text-xs ${retrying ? "text-neutral-400 cursor-not-allowed" : "text-neutral-600 hover:text-neutral-900 hover:underline"}`}>
+              className={`text-xs ${retrying ? "text-neutral-400 cursor-not-allowed" : "text-neutral-600 dark:text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 hover:underline"}`}>
               仅重跑 {STAGE_LABELS[stage]}
             </button>
             <button type="button" onClick={() => onRetry(true)} disabled={retrying}
-              className={`px-3 py-1.5 text-xs rounded ${retrying ? "bg-neutral-200 text-neutral-400 cursor-not-allowed" : "bg-neutral-900 text-white hover:bg-neutral-800"}`}>
+              className={`px-3 py-1.5 text-xs rounded ${retrying ? "bg-neutral-200 dark:bg-neutral-700 text-neutral-400 cursor-not-allowed" : "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"}`}>
               {retrying ? "Retrying…" : `从 ${STAGE_LABELS[stage]} 起重跑 ⇣`}
             </button>
           </div>

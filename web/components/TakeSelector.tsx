@@ -23,8 +23,8 @@ export function TakeSelector({
   if (takes.length <= 1) return null;
 
   return (
-    <div className="mt-1.5 border border-neutral-200 rounded bg-neutral-50 p-1.5 text-[11px]">
-      <div className="text-[10px] uppercase tracking-wide text-neutral-400 mb-1 px-1 flex items-center gap-1">
+    <div className="mt-1.5 border border-neutral-200 dark:border-neutral-700 rounded bg-neutral-50 dark:bg-neutral-800 p-1.5 text-[11px]">
+      <div className="text-[10px] uppercase tracking-wide text-neutral-400 dark:text-neutral-500 mb-1 px-1 flex items-center gap-1">
         Takes ({takes.length})
         <TooltipProvider delayDuration={200}>
           <Tooltip>
@@ -46,7 +46,7 @@ export function TakeSelector({
           <div
             key={t.id}
             className={`flex items-center gap-2 px-1.5 py-1 rounded ${
-              isSelected ? "bg-white border border-emerald-200" : ""
+              isSelected ? "bg-white dark:bg-neutral-900 border border-emerald-200 dark:border-emerald-800" : ""
             }`}
           >
             <span className="font-mono text-neutral-500">#{i + 1}</span>
@@ -60,7 +60,7 @@ export function TakeSelector({
               <button
                 type="button"
                 onClick={() => onPreview?.(t.id)}
-                className="px-1.5 py-0.5 rounded hover:bg-neutral-200 text-neutral-600"
+                className="px-1.5 py-0.5 rounded hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-600 dark:text-neutral-400"
                 title="Preview"
               >
                 ▶
@@ -69,7 +69,7 @@ export function TakeSelector({
                 <button
                   type="button"
                   onClick={() => onUse?.(t.id)}
-                  className="px-1.5 py-0.5 rounded bg-neutral-900 text-white hover:bg-neutral-800"
+                  className="px-1.5 py-0.5 rounded bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-800 dark:hover:bg-neutral-200"
                 >
                   Use
                 </button>

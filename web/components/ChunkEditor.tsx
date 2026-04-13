@@ -40,20 +40,20 @@ export function ChunkEditor({
   };
 
   return (
-    <div className="bg-neutral-50 border-b border-neutral-100">
+    <div className="bg-neutral-50 dark:bg-neutral-800 border-b border-neutral-100 dark:border-neutral-700">
       {/* Use grid to align with the row columns: skip first 4 cols, span last 2 */}
       <div className="grid" style={{ gridTemplateColumns: GRID_COLS }}>
-        <div className="col-span-4 bg-neutral-50" />
+        <div className="col-span-4 bg-neutral-50 dark:bg-neutral-800" />
         <div className="col-span-2 py-3 pr-6">
-          <div className="bg-white border border-neutral-300 rounded-lg p-4 shadow-sm">
+          <div className="bg-white dark:bg-neutral-900 border border-neutral-300 dark:border-neutral-600 rounded-lg p-4 shadow-sm dark:shadow-neutral-900">
             {/* TTS source */}
             <div className="mb-4">
               <div className="flex items-baseline gap-2 mb-1.5">
                 <span className="text-xs">🔊</span>
-                <span className="text-xs font-semibold text-neutral-700">
+                <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                   TTS 源
                 </span>
-                <span className="text-[10px] text-neutral-400 font-mono">
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono">
                   text_normalized
                 </span>
                 <span className="ml-auto text-[10px] text-amber-600">
@@ -64,7 +64,7 @@ export function ChunkEditor({
                 rows={2}
                 value={ttsValue}
                 onChange={(e) => setTtsValue(e.target.value)}
-                className="w-full border border-neutral-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-neutral-900 resize-none"
+                className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:border-neutral-900 dark:focus:border-neutral-400 resize-none"
               />
             </div>
 
@@ -72,10 +72,10 @@ export function ChunkEditor({
             <div className="mb-4">
               <div className="flex items-baseline gap-2 mb-1.5">
                 <span className="text-xs">💬</span>
-                <span className="text-xs font-semibold text-neutral-700">
+                <span className="text-xs font-semibold text-neutral-700 dark:text-neutral-300">
                   字幕文本
                 </span>
-                <span className="text-[10px] text-neutral-400 font-mono">
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono">
                   subtitle_text
                 </span>
                 {hasSubField ? (
@@ -96,7 +96,7 @@ export function ChunkEditor({
                 value={subValue}
                 placeholder={chunk.text}
                 onChange={(e) => setSubValue(e.target.value)}
-                className="w-full border border-neutral-300 rounded px-2.5 py-1.5 text-sm focus:outline-none focus:border-neutral-900 resize-none"
+                className="w-full border border-neutral-300 dark:border-neutral-600 rounded px-2.5 py-1.5 text-sm bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:border-neutral-900 dark:focus:border-neutral-400 resize-none"
               />
             </div>
 
@@ -104,23 +104,23 @@ export function ChunkEditor({
             <div className="mb-4">
               <div className="flex items-baseline gap-2 mb-1.5">
                 <span className="text-xs">📄</span>
-                <span className="text-xs font-semibold text-neutral-500">
+                <span className="text-xs font-semibold text-neutral-500 dark:text-neutral-400">
                   原文
                 </span>
-                <span className="text-[10px] text-neutral-400 font-mono">
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500 font-mono">
                   text
                 </span>
-                <span className="text-[10px] text-neutral-400">
+                <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
                   script.json 切分,只读
                 </span>
               </div>
-              <div className="px-2.5 py-1.5 text-sm bg-neutral-50 border border-neutral-200 rounded text-neutral-500">
+              <div className="px-2.5 py-1.5 text-sm bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded text-neutral-500 dark:text-neutral-400">
                 {chunk.text}
               </div>
             </div>
 
             {/* Actions */}
-            <div className="flex items-center gap-2 pt-3 border-t border-neutral-100">
+            <div className="flex items-center gap-2 pt-3 border-t border-neutral-100 dark:border-neutral-700">
               <button
                 type="button"
                 onClick={handleStage}
@@ -131,11 +131,11 @@ export function ChunkEditor({
               <button
                 type="button"
                 onClick={onCancel}
-                className="text-xs px-2.5 py-1.5 hover:bg-neutral-100 rounded text-neutral-600"
+                className="text-xs px-2.5 py-1.5 hover:bg-neutral-100 dark:hover:bg-neutral-800 rounded text-neutral-600 dark:text-neutral-400"
               >
                 Cancel
               </button>
-              <span className="ml-auto text-[10px] text-neutral-400">
+              <span className="ml-auto text-[10px] text-neutral-400 dark:text-neutral-500">
                 改动会先暂存,顶部 Apply All 时统一执行
               </span>
             </div>

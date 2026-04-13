@@ -17,19 +17,19 @@ interface Props {
 const STATUS_DOT: Record<EpisodeStatus, string> = {
   done: "bg-emerald-500",
   running: "bg-blue-500 animate-pulse",
-  ready: "bg-neutral-300",
+  ready: "bg-neutral-300 dark:bg-neutral-600",
   failed: "bg-red-500",
-  empty: "bg-neutral-200",
+  empty: "bg-neutral-200 dark:bg-neutral-600",
 };
 
 export function EpisodeSidebar({
   episodes, selectedId, onSelect, onNewEpisode, onDelete, onDuplicate, onArchive, error,
 }: Props) {
   return (
-    <aside className="w-56 border-r border-neutral-200 bg-white flex flex-col shrink-0">
-      <div className="px-3 py-3 flex items-center justify-between border-b border-neutral-100">
-        <span className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Episodes</span>
-        <button type="button" onClick={onNewEpisode} className="text-xs px-2 py-1 rounded hover:bg-neutral-100 text-neutral-600">+ New</button>
+    <aside className="w-56 border-r border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex flex-col shrink-0">
+      <div className="px-3 py-3 flex items-center justify-between border-b border-neutral-100 dark:border-neutral-700">
+        <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Episodes</span>
+        <button type="button" onClick={onNewEpisode} className="text-xs px-2 py-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400">+ New</button>
       </div>
       <div className="flex-1 overflow-y-auto p-1.5">
         {error ? (
@@ -44,16 +44,16 @@ export function EpisodeSidebar({
           const suffix = ep.status === "running" ? "..." : ep.status === "done" ? `${ep.doneCount}/${ep.chunkCount}` : ep.status;
           const hasMenu = onDelete || onDuplicate || onArchive;
           return (
-            <div key={ep.id} className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 mb-0.5 ${sel ? "bg-neutral-900 text-white" : "hover:bg-neutral-100"}`}>
+            <div key={ep.id} className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 mb-0.5 ${sel ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}>
               <button type="button" onClick={() => onSelect(ep.id)} className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
                 <span className="font-medium text-sm truncate">{ep.title}</span>
-                <span className={`ml-auto text-[11px] font-mono ${sel ? "text-neutral-300" : "text-neutral-400"}`}>{suffix}</span>
+                <span className={`ml-auto text-[11px] font-mono ${sel ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400 dark:text-neutral-500"}`}>{suffix}</span>
               </button>
               {hasMenu && (
                 <DropdownMenu>
                   <DropdownMenuTrigger asChild>
-                    <button type="button" className={`w-5 h-5 text-[11px] rounded flex items-center justify-center shrink-0 ${sel ? "hover:bg-white/20 text-neutral-300" : "hover:bg-neutral-200 text-neutral-400"}`}>⋯</button>
+                    <button type="button" className={`w-5 h-5 text-[11px] rounded flex items-center justify-center shrink-0 ${sel ? "hover:bg-white/20 text-neutral-300 dark:hover:bg-black/20 dark:text-neutral-600" : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-400 dark:text-neutral-500"}`}>⋯</button>
                   </DropdownMenuTrigger>
                   <DropdownMenuContent align="end">
                     {onDuplicate && <DropdownMenuItem onClick={() => onDuplicate(ep.id)}>Duplicate</DropdownMenuItem>}
@@ -67,7 +67,7 @@ export function EpisodeSidebar({
           );
         })}
       </div>
-      <div className="p-3 border-t border-neutral-100 text-[11px] text-neutral-400 font-mono">{episodes.length} episodes</div>
+      <div className="p-3 border-t border-neutral-100 dark:border-neutral-700 text-[11px] text-neutral-400 dark:text-neutral-500 font-mono">{episodes.length} episodes</div>
     </aside>
   );
 }

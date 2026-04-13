@@ -32,17 +32,17 @@ export function HelpDialog({ open, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-2xl w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
+        className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl dark:shadow-neutral-900 w-full max-w-3xl max-h-[85vh] flex flex-col overflow-hidden"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-3 border-b border-neutral-200 flex items-center gap-3">
+        <div className="px-5 py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center gap-3">
           <span className="text-lg">📖</span>
           <h2 className="font-semibold text-sm flex-1">使用说明</h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-900 text-lg leading-none"
+            className="text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 text-lg leading-none"
             aria-label="关闭"
           >
             ✕
@@ -50,7 +50,7 @@ export function HelpDialog({ open, onClose }: Props) {
         </div>
 
         {/* Body */}
-        <div className="flex-1 overflow-y-auto px-6 py-5 text-sm text-neutral-800 leading-relaxed">
+        <div className="flex-1 overflow-y-auto px-6 py-5 text-sm text-neutral-800 dark:text-neutral-200 leading-relaxed">
           <section className="mb-6">
             <h3 className="text-base font-semibold mb-2 text-neutral-900">
               Script TTS Config
@@ -218,7 +218,7 @@ export function HelpDialog({ open, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-2.5 border-t border-neutral-200 flex items-center justify-between text-[11px] text-neutral-500">
+        <div className="px-5 py-2.5 border-t border-neutral-200 dark:border-neutral-700 flex items-center justify-between text-[11px] text-neutral-500 dark:text-neutral-400">
           <span>按 Esc 关闭</span>
           <span>
             详细文档：<code className="font-mono">docs/tts-config.md</code>

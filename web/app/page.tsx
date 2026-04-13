@@ -85,18 +85,18 @@ export default function Page() {
   const [synthesizingCid, setSynthesizingCid] = useState<string | null>(null);
 
   return (
-    <div className="h-screen flex flex-col bg-neutral-50 text-neutral-900 overflow-hidden">
+    <div className="h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 overflow-hidden">
       {/* Header */}
-      <header className="h-12 border-b border-neutral-200 bg-white flex items-center px-4 shrink-0">
+      <header className="h-12 border-b border-neutral-200 dark:border-neutral-700 bg-white dark:bg-neutral-900 flex items-center px-4 shrink-0">
         <div className="flex items-center gap-2">
-          <div className="w-6 h-6 rounded bg-neutral-900 flex items-center justify-center text-white text-xs font-bold">T</div>
+          <div className="w-6 h-6 rounded bg-neutral-900 dark:bg-white flex items-center justify-center text-white dark:text-neutral-900 text-xs font-bold">T</div>
           <h1 className="font-semibold text-sm">TTS Harness</h1>
-          <span className="text-xs text-neutral-400 ml-1">v2</span>
+          <span className="text-xs text-neutral-400 dark:text-neutral-500 ml-1">v2</span>
         </div>
         <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-neutral-500 font-mono">localhost:3010</span>
+          <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">localhost:3010</span>
           <button type="button" onClick={() => store.setHelpOpen(true)} title="Help"
-            className="w-6 h-6 rounded-full border border-neutral-300 text-neutral-500 hover:bg-neutral-100 text-xs font-semibold">?</button>
+            className="w-6 h-6 rounded-full border border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-semibold">?</button>
         </div>
       </header>
 
@@ -114,7 +114,7 @@ export default function Page() {
         />
 
         {/* Main content */}
-        <main className="flex-1 flex flex-col overflow-hidden">
+        <main className="flex-1 flex flex-col overflow-hidden bg-neutral-50 dark:bg-neutral-900">
           {episode ? (
             <>
               <EpisodeHeader
@@ -153,14 +153,14 @@ export default function Page() {
                 onApply={async () => { await store.applyEdits(episode.id); await mutateDetail(); }}
                 onDiscard={store.discardEdits}
               />
-              <div className="flex-1 flex flex-col overflow-hidden bg-white">
+              <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-neutral-900">
                 {episode.chunks.length === 0 ? (
-                  <div className="px-6 py-12 text-center text-sm text-neutral-400">还没有 chunks。点按钮开始。</div>
+                  <div className="px-6 py-12 text-center text-sm text-neutral-400 dark:text-neutral-500">还没有 chunks。点按钮开始。</div>
                 ) : (
                   <>
-                    <div className="px-6 py-2 bg-white border-b border-neutral-100 flex items-center z-10 shrink-0">
-                      <h3 className="text-xs font-medium text-neutral-500 uppercase tracking-wide">Chunks</h3>
-                      <span className="ml-2 text-[11px] text-neutral-400">{episode.chunks.length} items</span>
+                    <div className="px-6 py-2 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-700 flex items-center z-10 shrink-0">
+                      <h3 className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Chunks</h3>
+                      <span className="ml-2 text-[11px] text-neutral-400 dark:text-neutral-500">{episode.chunks.length} items</span>
                     </div>
                     <ChunksTable
                       episodeId={episode.id}
@@ -194,12 +194,12 @@ export default function Page() {
               <LogViewer log={logLines ?? []} />
             </>
           ) : (
-            <div className="flex-1 flex items-center justify-center text-sm text-neutral-400">
+            <div className="flex-1 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
               {episodeError ? (
                 <div className="text-center">
                   <div className="text-red-500 mb-2">Failed to load episode</div>
                   <div className="text-xs text-red-400 font-mono max-w-md break-all">{episodeError.message || String(episodeError)}</div>
-                  <button type="button" onClick={() => mutateDetail()} className="mt-3 text-xs px-3 py-1 rounded border border-neutral-300 hover:bg-neutral-100">Retry</button>
+                  <button type="button" onClick={() => mutateDetail()} className="mt-3 text-xs px-3 py-1 rounded border border-neutral-300 dark:border-neutral-600 hover:bg-neutral-100 dark:hover:bg-neutral-800">Retry</button>
                 </div>
               ) : selectedId ? (
                 <div className="text-neutral-400">Loading...</div>

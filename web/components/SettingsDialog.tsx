@@ -100,17 +100,17 @@ export function SettingsDialog({ open, onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="bg-white rounded-lg shadow-2xl w-full max-w-lg flex flex-col"
+        className="bg-white dark:bg-neutral-900 rounded-lg shadow-2xl dark:shadow-neutral-900 w-full max-w-lg flex flex-col"
         onClick={(e) => e.stopPropagation()}
       >
         {/* Header */}
-        <div className="px-5 py-3 border-b border-neutral-200 flex items-center">
+        <div className="px-5 py-3 border-b border-neutral-200 dark:border-neutral-700 flex items-center">
           <span className="text-lg mr-2">⚙</span>
           <h2 className="font-semibold text-sm flex-1">Harness Settings</h2>
           <button
             type="button"
             onClick={onClose}
-            className="text-neutral-400 hover:text-neutral-900 text-lg leading-none"
+            className="text-neutral-400 hover:text-neutral-900 dark:hover:text-neutral-100 text-lg leading-none"
             aria-label="关闭"
           >
             ✕
@@ -126,11 +126,11 @@ export function SettingsDialog({ open, onClose }: Props) {
           ) : data ? (
             <>
               {/* System info */}
-              <div className="bg-neutral-50 border border-neutral-200 rounded p-3 text-xs">
-                <div className="font-semibold text-neutral-700 mb-1">
+              <div className="bg-neutral-50 dark:bg-neutral-800 border border-neutral-200 dark:border-neutral-700 rounded p-3 text-xs">
+                <div className="font-semibold text-neutral-700 dark:text-neutral-300 mb-1">
                   本机硬件
                 </div>
-                <div className="text-neutral-600 font-mono">
+                <div className="text-neutral-600 dark:text-neutral-400 font-mono">
                   {data.system.cores} cores · {data.system.ramGB} GB RAM
                 </div>
                 <div className="text-neutral-500 mt-1">
@@ -208,7 +208,7 @@ export function SettingsDialog({ open, onClose }: Props) {
                 </div>
               ) : null}
 
-              <div className="text-[10px] text-neutral-400 border-t border-neutral-100 pt-3">
+              <div className="text-[10px] text-neutral-400 dark:text-neutral-500 border-t border-neutral-100 dark:border-neutral-700 pt-3">
                 配置改动立即生效,下次运行 P3 时起使用新值。
                 不会中断当前正在运行的 pipeline。
               </div>
@@ -217,8 +217,8 @@ export function SettingsDialog({ open, onClose }: Props) {
         </div>
 
         {/* Footer */}
-        <div className="px-5 py-3 border-t border-neutral-200 flex items-center gap-2">
-          <span className="text-[10px] text-neutral-400">
+        <div className="px-5 py-3 border-t border-neutral-200 dark:border-neutral-700 flex items-center gap-2">
+          <span className="text-[10px] text-neutral-400 dark:text-neutral-500">
             {hasChanges ? "有未保存改动" : "已保存"}
           </span>
           <div className="ml-auto flex gap-2">
@@ -226,7 +226,7 @@ export function SettingsDialog({ open, onClose }: Props) {
               type="button"
               onClick={onClose}
               disabled={saving}
-              className="px-3 py-1.5 text-sm rounded hover:bg-neutral-100"
+              className="px-3 py-1.5 text-sm rounded hover:bg-neutral-100 dark:hover:bg-neutral-800"
             >
               关闭
             </button>
@@ -234,7 +234,7 @@ export function SettingsDialog({ open, onClose }: Props) {
               type="button"
               onClick={save}
               disabled={saving || !hasChanges}
-              className="px-3 py-1.5 text-sm bg-neutral-900 text-white rounded hover:bg-neutral-800 disabled:opacity-50 disabled:cursor-not-allowed"
+              className="px-3 py-1.5 text-sm bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 rounded hover:bg-neutral-800 dark:hover:bg-neutral-200 disabled:opacity-50 disabled:cursor-not-allowed"
             >
               {saving ? "保存中…" : "保存"}
             </button>

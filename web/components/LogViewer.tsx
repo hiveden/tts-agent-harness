@@ -67,7 +67,7 @@ export function LogViewer({ log }: Props) {
 
   return (
     <div
-      className="border-t border-neutral-200 bg-neutral-900 text-neutral-200 overflow-hidden flex flex-col shrink-0 relative"
+      className="border-t border-neutral-200 dark:border-neutral-700 bg-neutral-900 text-neutral-200 overflow-hidden flex flex-col shrink-0 relative"
       style={{ height: collapsed ? 28 : height }}
     >
       {!collapsed && (

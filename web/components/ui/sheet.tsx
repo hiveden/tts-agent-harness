@@ -28,7 +28,7 @@ const SheetContent = React.forwardRef<React.ComponentRef<typeof DialogPrimitive.
       <DialogPrimitive.Content
         ref={ref}
         className={cn(
-          "fixed z-40 bg-white shadow-2xl flex flex-col",
+          "fixed z-40 bg-white dark:bg-neutral-900 shadow-2xl dark:shadow-neutral-900 flex flex-col",
           side === "right" ? "right-0 top-0 h-full w-[30rem]" : "left-0 top-0 h-full w-[30rem]",
           className
         )}
@@ -42,7 +42,7 @@ const SheetContent = React.forwardRef<React.ComponentRef<typeof DialogPrimitive.
 SheetContent.displayName = "SheetContent"
 
 const SheetHeader = ({ className, ...props }: React.HTMLAttributes<HTMLDivElement>) => (
-  <div className={cn("h-12 border-b border-neutral-200 flex items-center px-4 gap-2 shrink-0", className)} {...props} />
+  <div className={cn("h-12 border-b border-neutral-200 dark:border-neutral-700 flex items-center px-4 gap-2 shrink-0", className)} {...props} />
 )
 
 const SheetTitle = DialogPrimitive.Title
