@@ -61,6 +61,14 @@ export interface Chunk {
   takes: Take[];
   stageRuns: StageRun[];
   attemptHistory?: AttemptRecord[];
+  verifyScores?: VerifyScores;
+  verifyDiagnosis?: {
+    verdict?: string;
+    type?: string;
+    missing?: string[];
+    extra?: string[];
+    lowConfidenceWords?: string[];
+  };
 }
 
 // ===== Episode (backend: EpisodeDetail) =====

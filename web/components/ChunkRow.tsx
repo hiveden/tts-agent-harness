@@ -1,12 +1,13 @@
 "use client";
 
-import { memo, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useEffect, useRef, useState } from "react";
 import type { Chunk, ChunkEdit, ChunkStatus, StageName } from "@/lib/types";
 import { getDisplaySubtitle, stripControlMarkers } from "@/lib/utils";
 import { useHarnessStore } from "@/lib/store";
 import { KaraokeSubtitle } from "./KaraokeSubtitle";
 import { RetryRow } from "./RetryRow";
 import { StagePipeline } from "./StagePipeline";
+import { VerifyScoreBar } from "./VerifyScoreBar";
 import { TakeSelector } from "./TakeSelector";
 import { GRID_COLS } from "./chunks-grid";
 
@@ -118,6 +119,9 @@ export const ChunkRow = memo(function ChunkRow({
 
   const currentTake = chunk.takes.find((t) => t.id === chunk.selectedTakeId);
   const durationS = currentTake?.durationS ?? 0;
+
+  const [verifyExpanded, setVerifyExpanded] = useState(false);
+  const toggleVerify = useCallback(() => setVerifyExpanded((v) => !v), []);
 
   const hasAudio = chunk.status === "synth_done" || chunk.status === "verified" || chunk.status === "needs_review";
   const canPlay = hasAudio && !isDirty;
@@ -240,6 +244,51 @@ export const ChunkRow = memo(function ChunkRow({
               onStageClick={onStageClick}
               compact
             />
+          </div>
+        )}
+        {chunk.verifyScores && (
+          <div className="mt-1">
+            <button
+              type="button"
+              onClick={toggleVerify}
+              className="flex items-center gap-1.5 text-[11px] w-full text-left group"
+            >
+              <span className="text-neutral-400 dark:text-neutral-500 text-[9px] group-hover:text-neutral-600 dark:group-hover:text-neutral-300 transition-colors">
+                {verifyExpanded ? "▾" : "▸"}
+              </span>
+              <span className="font-mono font-bold text-neutral-600 dark:text-neutral-300">
+                {chunk.verifyScores.weightedScore.toFixed(2)}
+              </span>
+              <span
+                className={`px-1 py-0.5 rounded text-[9px] font-bold ${
+                  chunk.verifyDiagnosis?.verdict === "fail" || chunk.verifyScores.weightedScore < 0.7
+                    ? "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
+                    : "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+                }`}
+              >
+                {chunk.verifyDiagnosis?.verdict === "fail" || chunk.verifyScores.weightedScore < 0.7 ? "FAIL" : "PASS"}
+              </span>
+              {chunk.verifyDiagnosis?.missing && chunk.verifyDiagnosis.missing.length > 0 && (
+                <span className="px-1 py-0.5 rounded text-[9px] bg-red-100 dark:bg-red-900/30 text-red-600 dark:text-red-300">
+                  missing: {chunk.verifyDiagnosis.missing.join(", ")}
+                </span>
+              )}
+              {chunk.verifyDiagnosis?.extra && chunk.verifyDiagnosis.extra.length > 0 && (
+                <span className="px-1 py-0.5 rounded text-[9px] bg-neutral-100 dark:bg-neutral-700 text-neutral-500 dark:text-neutral-400">
+                  extra: {chunk.verifyDiagnosis.extra.join(", ")}
+                </span>
+              )}
+              {chunk.verifyDiagnosis?.lowConfidenceWords && chunk.verifyDiagnosis.lowConfidenceWords.length > 0 && (
+                <span className="px-1 py-0.5 rounded text-[9px] bg-amber-100 dark:bg-amber-900/30 text-amber-600 dark:text-amber-300">
+                  low-conf: {chunk.verifyDiagnosis.lowConfidenceWords.join(", ")}
+                </span>
+              )}
+            </button>
+            {verifyExpanded && (
+              <div className="mt-1 pl-3">
+                <VerifyScoreBar scores={chunk.verifyScores} />
+              </div>
+            )}
           </div>
         )}
         {chunk.takes.length > 1 ? (

@@ -57,7 +57,7 @@ export function VerifyScoreBar({ scores }: Props) {
                 style={{ width: `${pct}%` }}
               />
             </div>
-            <span className="w-8 text-right font-mono text-neutral-600">
+            <span className="w-8 text-right font-mono text-neutral-600 dark:text-neutral-400">
               {v.toFixed(2)}
             </span>
           </div>
@@ -72,8 +72,8 @@ export function VerifyScoreBar({ scores }: Props) {
         <span
           className={`ml-1 px-1.5 py-0.5 rounded text-[10px] font-bold ${
             pass
-              ? "bg-emerald-100 text-emerald-700"
-              : "bg-red-100 text-red-700"
+              ? "bg-emerald-100 dark:bg-emerald-900/30 text-emerald-700 dark:text-emerald-300"
+              : "bg-red-100 dark:bg-red-900/30 text-red-700 dark:text-red-300"
           }`}
         >
           {pass ? "PASS" : "FAIL"}
