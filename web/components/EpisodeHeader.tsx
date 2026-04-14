@@ -12,8 +12,10 @@ import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, Di
 interface Props {
   episode: Episode;
   running: boolean;
+  runPending?: boolean;
   onRun: (mode: string) => void;
   onCancel?: () => void;
+  cancelPending?: boolean;
   onViewScript?: () => void;
   failedCount?: number;
 }
@@ -29,7 +31,7 @@ const STATUS_BADGE: Record<
   empty: { bg: "bg-neutral-50 dark:bg-neutral-800", fg: "text-neutral-500 dark:text-neutral-400", br: "border-neutral-200 dark:border-neutral-700", label: "empty" },
 };
 
-export function EpisodeHeader({ episode, running, onRun, onCancel, onViewScript, failedCount = 0 }: Props) {
+export function EpisodeHeader({ episode, running, runPending = false, onRun, onCancel, cancelPending = false, onViewScript, failedCount = 0 }: Props) {
   const badge = STATUS_BADGE[episode.status] ?? STATUS_BADGE.ready;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
@@ -56,14 +58,14 @@ export function EpisodeHeader({ episode, running, onRun, onCancel, onViewScript,
 
   // D-03: Button config per status
   const primaryButton = (() => {
-    if (running) return { label: "取消", disabled: false, mode: "__cancel__" };
+    if (running) return { label: cancelPending ? "取消中…" : "取消", disabled: cancelPending, mode: "__cancel__" };
     switch (episode.status) {
       case "empty":
-        return { label: "切分", disabled: false, mode: "chunk_only" };
+        return { label: runPending ? "切分中…" : "切分", disabled: runPending, mode: "chunk_only" };
       case "ready":
-        return { label: "合成全部", disabled: false, mode: "synthesize" };
+        return { label: runPending ? "启动中…" : "合成全部", disabled: runPending, mode: "synthesize" };
       case "failed":
-        return { label: `重试失败 (${failedCount})`, disabled: failedCount === 0, mode: "retry_failed" };
+        return { label: runPending ? "启动中…" : `重试失败 (${failedCount})`, disabled: failedCount === 0 || runPending, mode: "retry_failed" };
       case "done":
         return { label: "完成 ✓", disabled: true, mode: "" };
       default:

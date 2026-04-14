@@ -41,8 +41,16 @@ api.use({
     return request;
   },
   async onResponse({ response }) {
-    if (response.status === 401) {
-      // Dynamically import to avoid circular deps and SSR issues
+    if (response.status >= 500) {
+      let detail = `服务器错误 (${response.status})`;
+      try {
+        const body = await response.clone().json();
+        if (body?.detail) detail = body.detail;
+      } catch {
+        // ignore parse failure
+      }
+      console.error(`[api] ${response.url} → ${detail}`);
+    } else if (response.status === 401) {
       const { toast } = await import("sonner");
       toast.error("请先配置 Fish API Key", {
         description: "点击右上角钥匙图标设置 API Key",

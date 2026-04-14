@@ -2,13 +2,13 @@
 
 import { useEffect, useCallback, useState } from "react";
 import useSWR from "swr";
-import { toast } from "sonner";
 import type { Episode, StageName } from "@/lib/types";
 import { useHarnessStore } from "@/lib/store";
 import { useEpisodes, useEpisode, useEpisodeLogs, getAudioUrl } from "@/lib/hooks";
 import { getApiUrl } from "@/lib/api-client";
 import { useConfirm } from "@/hooks/useConfirm";
 import { usePrompt } from "@/hooks/usePrompt";
+import { useAction } from "@/hooks/useAction";
 import { useTheme } from "@/components/Providers";
 import { Sun, Moon, KeyRound } from "lucide-react";
 
@@ -46,7 +46,7 @@ export default function Page() {
   // --- Server state (SWR) ---
   const { data: episodes, error: episodesError, mutate: mutateList } = useEpisodes();
   const { data: episode, error: episodeError, mutate: mutateDetail } = useEpisode(selectedId);
-  const { data: logLines } = useEpisodeLogs(selectedId);
+  const { data: logLines, error: logsError } = useEpisodeLogs(selectedId);
 
   // --- Derived ---
   const running = episode?.status === "running";
@@ -55,19 +55,77 @@ export default function Page() {
   ).length ?? 0;
   const dirtyCount = store.dirtyCount();
 
-  // --- Mutate helpers (bridge store actions → SWR refresh) ---
-  const withRefresh = useCallback(
-    (fn: (...args: never[]) => Promise<void>) =>
-      async (...args: never[]) => {
-        try {
-          await fn(...args);
-          await mutateDetail();
-          await mutateList();
-        } catch (e) {
-          toast.error("操作失败", { description: (e as Error).message });
-        }
-      },
-    [mutateDetail, mutateList],
+  // --- Action hooks (unified loading / error toast / dedup) ---
+  const [execRun, runPending] = useAction(
+    useCallback(async (mode: string) => {
+      await store.runEpisode(mode);
+      await mutateDetail();
+      await mutateList();
+    }, [store, mutateDetail, mutateList]),
+    { errorPrefix: "运行失败" },
+  );
+
+  const [execCreate] = useAction(
+    useCallback(async (id: string, file: File) => {
+      await store.createEpisode(id, file);
+      await mutateList();
+      store.selectEpisode(id);
+      setNewEpOpen(false);
+    }, [store, mutateList]),
+    { errorPrefix: "创建失败" },
+  );
+
+  const [execUseTake] = useAction(
+    useCallback(async (cid: string, takeId: string) => {
+      await store.finalizeTake(episode!.id, cid, takeId);
+      await mutateDetail();
+    }, [store, episode, mutateDetail]),
+    { errorPrefix: "选定 take 失败" },
+  );
+
+  const [execDelete] = useAction(
+    useCallback(async (id: string) => {
+      await store.deleteEpisode(id);
+      await mutateList();
+    }, [store, mutateList]),
+    { errorPrefix: "删除失败" },
+  );
+
+  const [execDuplicate] = useAction(
+    useCallback(async (id: string, newId: string) => {
+      await store.duplicateEpisode(id, newId);
+      await mutateList();
+    }, [store, mutateList]),
+    { errorPrefix: "复制失败" },
+  );
+
+  const [execArchive] = useAction(
+    useCallback(async (id: string) => {
+      await store.archiveEpisode(id);
+      await mutateList();
+    }, [store, mutateList]),
+    { errorPrefix: "归档失败" },
+  );
+
+  const [execCancel, cancelPending] = useAction(
+    useCallback(async () => {
+      if (!episode) return;
+      const res = await fetch(`${getApiUrl()}/episodes/${episode.id}/cancel`, { method: "POST" });
+      if (!res.ok) throw new Error(await res.text());
+      await mutateDetail();
+      await mutateList();
+    }, [episode, mutateDetail, mutateList]),
+    { errorPrefix: "取消失败" },
+  );
+
+  const [execRetry, retrying] = useAction(
+    useCallback(async (cascade: boolean) => {
+      if (!store.selectedId || !store.drawerOpen) return;
+      await store.retryChunk(store.selectedId, store.drawerOpen.cid, store.drawerOpen.stage, cascade);
+      await mutateDetail();
+      store.closeDrawer();
+    }, [store, mutateDetail]),
+    { errorPrefix: "重试失败" },
   );
 
   // --- Keyboard shortcuts ---
@@ -113,6 +171,43 @@ export default function Page() {
   const [apiKeyOpen, setApiKeyOpen] = useState(false);
   const [synthesizingCid, setSynthesizingCid] = useState<string | null>(null);
 
+  const [execStageRetry] = useAction(
+    useCallback(async (stage: StageName) => {
+      if (!episode) return;
+      const failed = episode.chunks.filter(c => c.stageRuns.find(sr => sr.stage === stage)?.status === "failed");
+      if (!failed.length) return;
+      const ok = await confirmAction(`重跑 ${failed.length} 个失败的 ${stage.toUpperCase()}？`);
+      if (!ok) return;
+      for (const c of failed) await store.retryChunk(episode.id, c.id, stage, true);
+      await mutateDetail();
+    }, [episode, confirmAction, store, mutateDetail]),
+    { errorPrefix: "批量重试失败" },
+  );
+
+  const [execApply] = useAction(
+    useCallback(async () => {
+      if (!episode) return;
+      await store.applyEdits(episode.id);
+      await mutateDetail();
+    }, [episode, store, mutateDetail]),
+    { errorPrefix: "应用编辑失败" },
+  );
+
+  const [execSynthesize] = useAction(
+    useCallback(async (cid: string) => {
+      if (!episode) return;
+      setSynthesizingCid(cid);
+      try {
+        await store.retryChunk(episode.id, cid, "p2", false);
+        await mutateDetail();
+        store.togglePlay(cid);
+      } finally {
+        setSynthesizingCid(null);
+      }
+    }, [episode, store, mutateDetail]),
+    { errorPrefix: "合成失败" },
+  );
+
   function ThemeToggle() {
     const { resolvedTheme, setTheme } = useTheme();
     return (
@@ -157,9 +252,9 @@ export default function Page() {
           onSelect={store.selectEpisode}
           onNewEpisode={() => setNewEpOpen(true)}
           error={episodesError ?? null}
-          onDelete={async (id) => { const ok = await confirmAction(`确认删除 ${id}？`, { destructive: true }); if (ok) { try { await store.deleteEpisode(id); await mutateList(); } catch (e) { toast.error("删除失败", { description: (e as Error).message }); } } }}
-          onDuplicate={async (id) => { const newId = await promptAction(`复制 ${id} 到新 ID:`, { defaultValue: `${id}-copy` }); if (newId) { try { await store.duplicateEpisode(id, newId); await mutateList(); } catch (e) { toast.error("复制失败", { description: (e as Error).message }); } } }}
-          onArchive={async (id) => { const ok = await confirmAction(`归档 ${id}？`); if (ok) { try { await store.archiveEpisode(id); await mutateList(); } catch (e) { toast.error("归档失败", { description: (e as Error).message }); } } }}
+          onDelete={async (id) => { const ok = await confirmAction(`确认删除 ${id}？`, { destructive: true }); if (ok) await execDelete(id); }}
+          onDuplicate={async (id) => { const newId = await promptAction(`复制 ${id} 到新 ID:`, { defaultValue: `${id}-copy` }); if (newId) await execDuplicate(id, newId); }}
+          onArchive={async (id) => { const ok = await confirmAction(`归档 ${id}？`); if (ok) await execArchive(id); }}
         />
 
         {/* Main content */}
@@ -169,15 +264,10 @@ export default function Page() {
               <EpisodeHeader
                 episode={episode}
                 running={running}
-                onRun={async (mode) => { await store.runEpisode(mode); await mutateDetail(); await mutateList(); }}
-                onCancel={async () => {
-                  try {
-                    const res = await fetch(`${getApiUrl()}/episodes/${episode.id}/cancel`, { method: "POST" });
-                    if (!res.ok) throw new Error(await res.text());
-                    await mutateDetail();
-                    await mutateList();
-                  } catch (e) { toast.error("取消失败", { description: (e as Error).message }); }
-                }}
+                runPending={runPending}
+                onRun={execRun}
+                onCancel={execCancel}
+                cancelPending={cancelPending}
                 onViewScript={() => setScriptPreviewOpen(true)}
                 failedCount={failedCount}
               />
@@ -196,20 +286,13 @@ export default function Page() {
               {episode.chunks.length > 0 && (
                 <EpisodeStageBar
                   chunks={episode.chunks}
-                  onStageRetry={async (stage: StageName) => {
-                    const failed = episode.chunks.filter(c => c.stageRuns.find(sr => sr.stage === stage)?.status === "failed");
-                    if (!failed.length) return;
-                    const ok = await confirmAction(`重跑 ${failed.length} 个失败的 ${stage.toUpperCase()}？`);
-                    if (!ok) return;
-                    for (const c of failed) await store.retryChunk(episode.id, c.id, stage, true);
-                    await mutateDetail();
-                  }}
+                  onStageRetry={execStageRetry}
                 />
               )}
               <EditBanner
                 ttsCount={dirtyCount.tts}
                 subCount={dirtyCount.sub}
-                onApply={async () => { await store.applyEdits(episode.id); await mutateDetail(); }}
+                onApply={execApply}
                 onDiscard={store.discardEdits}
               />
               <div className="flex-1 flex flex-col overflow-hidden bg-white dark:bg-neutral-900">
@@ -230,27 +313,15 @@ export default function Page() {
                         const take = chunk?.takes.find(t => t.id === takeId);
                         if (take) store.previewTake(take.audioUri);
                       }}
-                      onUseTake={async (cid, takeId) => { await store.finalizeTake(episode.id, cid, takeId); await mutateDetail(); }}
-                      onSynthesize={async (cid) => {
-                        setSynthesizingCid(cid);
-                        try {
-                          await store.retryChunk(episode.id, cid, "p2", false);
-                          await mutateDetail();
-                          // Auto-play after synthesis
-                          store.togglePlay(cid);
-                        } catch (e) {
-                          toast.error("合成失败", { description: (e as Error).message });
-                        } finally {
-                          setSynthesizingCid(null);
-                        }
-                      }}
+                      onUseTake={execUseTake}
+                      onSynthesize={execSynthesize}
                       synthesizingCid={synthesizingCid}
                       getAudioUrl={getAudioUrl}
                     />
                   </>
                 )}
               </div>
-              <LogViewer log={logLines ?? []} />
+              <LogViewer log={logLines ?? []} error={logsError ?? null} />
             </>
           ) : (
             <div className="flex-1 flex items-center justify-center text-sm text-neutral-400 dark:text-neutral-500">
@@ -274,7 +345,7 @@ export default function Page() {
       <NewEpisodeDialog
         open={newEpOpen}
         onClose={() => setNewEpOpen(false)}
-        onCreate={async (id, file) => { await store.createEpisode(id, file); await mutateList(); store.selectEpisode(id); setNewEpOpen(false); }}
+        onCreate={execCreate}
       />
       <HelpDialog open={store.helpOpen} onClose={() => store.setHelpOpen(false)} />
       <ApiKeyDialog open={apiKeyOpen} onClose={() => setApiKeyOpen(false)} />
@@ -296,11 +367,8 @@ export default function Page() {
         episode={episode}
         drawerOpen={store.drawerOpen}
         onClose={store.closeDrawer}
-        onRetry={async (cascade) => {
-          await store.retryChunk(store.selectedId!, store.drawerOpen!.cid, store.drawerOpen!.stage, cascade);
-          await mutateDetail();
-          store.closeDrawer();
-        }}
+        onRetry={execRetry}
+        retrying={retrying}
       />}
     </div>
   );
@@ -308,12 +376,13 @@ export default function Page() {
 
 
 // Wrapper that fetches stage context for the drawer
-function DrawerWithContext({ episodeId, episode, drawerOpen, onClose, onRetry }: {
+function DrawerWithContext({ episodeId, episode, drawerOpen, onClose, onRetry, retrying = false }: {
   episodeId: string;
   episode: Episode;
   drawerOpen: { cid: string; stage: StageName };
   onClose: () => void;
   onRetry: (cascade: boolean) => Promise<void>;
+  retrying?: boolean;
 }) {
   const { data: ctxData } = useSWR(
     `api:stage-context:${episodeId}:${drawerOpen.cid}:${drawerOpen.stage}`,
@@ -340,6 +409,7 @@ function DrawerWithContext({ episodeId, episode, drawerOpen, onClose, onRetry }:
       logError={null}
       context={ctxData ?? null}
       onRetry={onRetry}
+      retrying={retrying}
     />
   );
 }

@@ -4,13 +4,14 @@ import { useEffect, useRef, useState } from "react";
 
 interface Props {
   log: string[];
+  error?: Error | null;
 }
 
 const MIN_H = 80;
 const MAX_H = 800;
 const STORAGE_KEY = "tts-harness-logviewer-h";
 
-export function LogViewer({ log }: Props) {
+export function LogViewer({ log, error }: Props) {
   const ref = useRef<HTMLDivElement>(null);
   const [height, setHeight] = useState(128);
   const [collapsed, setCollapsed] = useState(true);
@@ -91,7 +92,9 @@ export function LogViewer({ log }: Props) {
           ref={ref}
           className="flex-1 overflow-y-auto px-4 py-2 font-mono text-[11px] leading-relaxed"
         >
-          {log.length === 0 ? (
+          {error ? (
+            <div className="text-red-400 italic">日志加载失败: {error.message || String(error)}</div>
+          ) : log.length === 0 ? (
             <div className="text-neutral-500 italic">无日志</div>
           ) : (
             log.map((line, i) => <div key={i}>{line}</div>)

@@ -22,9 +22,6 @@ export function NewEpisodeDialog({ open, onClose, onCreate }: Props) {
     setSubmitting(true);
     try {
       await onCreate(id.trim(), file);
-      setId("");
-      setFile(null);
-      onClose();
     } finally {
       setSubmitting(false);
     }
