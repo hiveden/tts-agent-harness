@@ -18,7 +18,7 @@ def _configured_token() -> str | None:
     return os.environ.get("HARNESS_API_TOKEN") or None
 
 
-_PUBLIC_PATHS = {"/healthz", "/docs", "/openapi.json"}
+_PUBLIC_PATHS = {"/healthz", "/docs", "/openapi.json", "/keys", "/keys/status"}
 
 
 async def verify_token(request: Request) -> None:

@@ -4,6 +4,9 @@
  * All request/response types are auto-generated from the backend's
  * OpenAPI schema (web/lib/gen/openapi.d.ts). Zero hand-written type
  * definitions needed.
+ *
+ * API keys are stored as encrypted httpOnly cookies — the browser sends
+ * them automatically; no client-side header injection needed.
  */
 import createClient from "openapi-fetch";
 import type { paths } from "./gen/openapi";
@@ -15,31 +18,14 @@ const API_URL =
 
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "";
 
-/** Read API keys from localStorage (browser only). */
-function getApiKeyHeaders(): Record<string, string> {
-  if (typeof window === "undefined") return {};
-  const headers: Record<string, string> = {};
-  const fishKey = window.localStorage.getItem("fish-api-key");
-  if (fishKey) headers["X-Fish-Key"] = fishKey;
-  const groqKey = window.localStorage.getItem("groq-api-key");
-  if (groqKey) headers["X-Groq-Key"] = groqKey;
-  return headers;
-}
-
 export const api = createClient<paths>({
   baseUrl: API_URL,
   headers: API_TOKEN ? { Authorization: `Bearer ${API_TOKEN}` } : {},
+  credentials: "include",
 });
 
-// Inject API key headers and handle auth errors via middleware
+// Handle auth errors via middleware
 api.use({
-  async onRequest({ request }) {
-    const headers = getApiKeyHeaders();
-    for (const [k, v] of Object.entries(headers)) {
-      request.headers.set(k, v);
-    }
-    return request;
-  },
   async onResponse({ response }) {
     if (!response.ok) {
       let detail = `请求失败 (${response.status})`;

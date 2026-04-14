@@ -22,6 +22,12 @@
 	handle /audio/* {
 		reverse_proxy localhost:8100
 	}
+	handle /keys {
+		reverse_proxy localhost:8100
+	}
+	handle /keys/* {
+		reverse_proxy localhost:8100
+	}
 	handle /healthz {
 		reverse_proxy localhost:8100
 	}

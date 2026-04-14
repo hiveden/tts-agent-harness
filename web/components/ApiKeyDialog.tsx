@@ -9,61 +9,65 @@ import {
   DialogDescription,
   DialogFooter,
 } from "@/components/ui/dialog";
-
-const FISH_STORAGE_KEY = "fish-api-key";
-const GROQ_STORAGE_KEY = "groq-api-key";
-
-const FISH_VERIFY_URL = "https://api.fish.audio/wallet/self/api-credit";
-const GROQ_VERIFY_URL = "https://api.groq.com/openai/v1/models";
-
-function maskKey(key: string): string {
-  if (!key) return "";
-  if (key.length <= 8) return "****" + key.slice(-4);
-  return "****..." + key.slice(-4);
-}
+import { getApiUrl } from "@/lib/api-client";
 
 type VerifyStatus = "idle" | "testing" | "ok" | "fail";
-
-async function verifyKey(url: string, key: string): Promise<boolean> {
-  try {
-    const res = await fetch(url, {
-      headers: { Authorization: `Bearer ${key}` },
-    });
-    return res.ok;
-  } catch {
-    return false;
-  }
-}
 
 interface Props {
   open: boolean;
   onClose: () => void;
 }
 
+interface KeysStatus {
+  fish: boolean;
+  groq: boolean;
+  error?: string | null;
+}
+
+const API = getApiUrl();
+
+async function fetchStatus(): Promise<KeysStatus> {
+  const res = await fetch(`${API}/keys/status`, { credentials: "include" });
+  return res.json();
+}
+
+async function saveKeys(body: { fish_key?: string; groq_key?: string }): Promise<KeysStatus> {
+  const res = await fetch(`${API}/keys`, {
+    method: "POST",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify(body),
+    credentials: "include",
+  });
+  return res.json();
+}
+
+async function clearKeys(): Promise<KeysStatus> {
+  const res = await fetch(`${API}/keys`, {
+    method: "DELETE",
+    credentials: "include",
+  });
+  return res.json();
+}
+
 export function ApiKeyDialog({ open, onClose }: Props) {
   const [fishKey, setFishKey] = useState("");
-  const [fishSavedMask, setFishSavedMask] = useState("");
-  const [fishHasSaved, setFishHasSaved] = useState(false);
+  const [fishConfigured, setFishConfigured] = useState(false);
   const [fishStatus, setFishStatus] = useState<VerifyStatus>("idle");
 
   const [groqKey, setGroqKey] = useState("");
-  const [groqSavedMask, setGroqSavedMask] = useState("");
-  const [groqHasSaved, setGroqHasSaved] = useState(false);
+  const [groqConfigured, setGroqConfigured] = useState(false);
   const [groqStatus, setGroqStatus] = useState<VerifyStatus>("idle");
 
   useEffect(() => {
     if (open) {
-      const storedFish = localStorage.getItem(FISH_STORAGE_KEY) || "";
-      setFishSavedMask(maskKey(storedFish));
-      setFishHasSaved(!!storedFish);
       setFishKey("");
       setFishStatus("idle");
-
-      const storedGroq = localStorage.getItem(GROQ_STORAGE_KEY) || "";
-      setGroqSavedMask(maskKey(storedGroq));
-      setGroqHasSaved(!!storedGroq);
       setGroqKey("");
       setGroqStatus("idle");
+      fetchStatus().then((s) => {
+        setFishConfigured(s.fish);
+        setGroqConfigured(s.groq);
+      });
     }
   }, [open]);
 
@@ -71,11 +75,9 @@ export function ApiKeyDialog({ open, onClose }: Props) {
     const trimmed = fishKey.trim();
     if (!trimmed) return;
     setFishStatus("testing");
-    const ok = await verifyKey(FISH_VERIFY_URL, trimmed);
-    if (ok) {
-      localStorage.setItem(FISH_STORAGE_KEY, trimmed);
-      setFishSavedMask(maskKey(trimmed));
-      setFishHasSaved(true);
+    const s = await saveKeys({ fish_key: trimmed });
+    if (s.fish && !s.error) {
+      setFishConfigured(true);
       setFishKey("");
       setFishStatus("ok");
     } else {
@@ -83,23 +85,13 @@ export function ApiKeyDialog({ open, onClose }: Props) {
     }
   };
 
-  const handleClearFish = () => {
-    localStorage.removeItem(FISH_STORAGE_KEY);
-    setFishSavedMask("");
-    setFishHasSaved(false);
-    setFishKey("");
-    setFishStatus("idle");
-  };
-
   const handleSaveGroq = async () => {
     const trimmed = groqKey.trim();
     if (!trimmed) return;
     setGroqStatus("testing");
-    const ok = await verifyKey(GROQ_VERIFY_URL, trimmed);
-    if (ok) {
-      localStorage.setItem(GROQ_STORAGE_KEY, trimmed);
-      setGroqSavedMask(maskKey(trimmed));
-      setGroqHasSaved(true);
+    const s = await saveKeys({ groq_key: trimmed });
+    if (s.groq && !s.error) {
+      setGroqConfigured(true);
       setGroqKey("");
       setGroqStatus("ok");
     } else {
@@ -107,11 +99,13 @@ export function ApiKeyDialog({ open, onClose }: Props) {
     }
   };
 
-  const handleClearGroq = () => {
-    localStorage.removeItem(GROQ_STORAGE_KEY);
-    setGroqSavedMask("");
-    setGroqHasSaved(false);
+  const handleClearAll = async () => {
+    await clearKeys();
+    setFishConfigured(false);
+    setGroqConfigured(false);
+    setFishKey("");
     setGroqKey("");
+    setFishStatus("idle");
     setGroqStatus("idle");
   };
 
@@ -121,7 +115,7 @@ export function ApiKeyDialog({ open, onClose }: Props) {
         <DialogHeader>
           <DialogTitle>API Keys</DialogTitle>
           <DialogDescription>
-            Key 仅存储在浏览器 localStorage 中，不会发送到后端数据库。保存时会自动验证有效性。
+            Key 通过加密 Cookie 存储在服务端，不会明文传输或记录日志。建议使用专用测试 Key，用完后及时更换。
           </DialogDescription>
         </DialogHeader>
 
@@ -133,11 +127,10 @@ export function ApiKeyDialog({ open, onClose }: Props) {
             placeholder="粘贴 API Key"
             value={fishKey}
             onChange={setFishKey}
-            savedMask={fishSavedMask}
-            hasSaved={fishHasSaved}
+            configured={fishConfigured}
             status={fishStatus}
             onSave={handleSaveFish}
-            onClear={handleClearFish}
+            onClear={handleClearAll}
             link={{ href: "https://fish.audio/zh-CN/go-api/api-keys", label: "fish.audio 获取 API Key" }}
           />
 
@@ -150,11 +143,10 @@ export function ApiKeyDialog({ open, onClose }: Props) {
             placeholder="粘贴 API Key"
             value={groqKey}
             onChange={setGroqKey}
-            savedMask={groqSavedMask}
-            hasSaved={groqHasSaved}
+            configured={groqConfigured}
             status={groqStatus}
             onSave={handleSaveGroq}
-            onClear={handleClearGroq}
+            onClear={handleClearAll}
             link={{ href: "https://console.groq.com/keys", label: "console.groq.com 获取 API Key" }}
           />
         </div>
@@ -182,7 +174,7 @@ function StatusBadge({ status }: { status: VerifyStatus }) {
 }
 
 function KeySection({
-  title, description, inputId, placeholder, value, onChange, savedMask, hasSaved, status, onSave, onClear, link,
+  title, description, inputId, placeholder, value, onChange, configured, status, onSave, onClear, link,
 }: {
   title: string;
   description: React.ReactNode;
@@ -190,8 +182,7 @@ function KeySection({
   placeholder: string;
   value: string;
   onChange: (v: string) => void;
-  savedMask: string;
-  hasSaved: boolean;
+  configured: boolean;
   status: VerifyStatus;
   onSave: () => void;
   onClear: () => void;
@@ -203,16 +194,16 @@ function KeySection({
       <h3 className="text-sm font-medium text-neutral-900 dark:text-neutral-100">{title}</h3>
       <p className="text-[11px] text-neutral-500 dark:text-neutral-400 leading-relaxed">{description}</p>
 
-      {hasSaved && (
+      {configured && (
         <div className="flex items-center gap-2 text-xs text-neutral-500 dark:text-neutral-400">
-          <span>当前 Key: <span className="font-mono">{savedMask}</span></span>
+          <span>已配置</span>
           <StatusBadge status={status} />
         </div>
       )}
 
       <div className="space-y-1.5">
         <label htmlFor={inputId} className="text-xs font-medium text-neutral-700 dark:text-neutral-300">
-          {hasSaved ? "替换 Key" : "输入 API Key"}
+          {configured ? "替换 Key" : "输入 API Key"}
         </label>
         <div className="flex gap-2">
           <input
@@ -236,7 +227,7 @@ function KeySection({
           >
             {testing ? "验证..." : "保存"}
           </button>
-          {hasSaved && (
+          {configured && (
             <button
               type="button"
               onClick={onClear}
@@ -247,7 +238,7 @@ function KeySection({
             </button>
           )}
         </div>
-        {!hasSaved && status === "fail" && (
+        {!configured && status === "fail" && (
           <p className="text-xs text-red-600 dark:text-red-400">Key 无效，请检查后重试</p>
         )}
       </div>

@@ -15,7 +15,7 @@ from typing import Any
 # In-flight run tasks — cancel support
 _running_tasks: dict[str, asyncio.Task] = {}  # episode_id → Task
 
-from fastapi import APIRouter, Depends, File, Form, Header, Query, UploadFile
+from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from minio.error import S3Error
 from pydantic import BaseModel
 from server.core.domain import _CamelBase
@@ -405,9 +405,8 @@ async def delete_episode(
 @router.post("/episodes/{episode_id}/run", response_model=RunResponse)
 async def run_episode(
     episode_id: str,
+    request: Request,
     body: RunRequest | None = None,
-    x_fish_key: str | None = Header(None, alias="X-Fish-Key"),
-    x_groq_key: str | None = Header(None, alias="X-Groq-Key"),
     session: AsyncSession = Depends(get_session),
     prefect_client: Any = Depends(get_prefect_client),
 ) -> RunResponse:
@@ -422,6 +421,19 @@ async def run_episode(
 
     chunk_ids: Optional list. If provided, only run these chunks (multi-select).
     """
+    from server.core.crypto import decrypt_value
+
+    fish_key_enc = request.cookies.get("__fish_key")
+    try:
+        x_fish_key = decrypt_value(fish_key_enc) if fish_key_enc else None
+    except Exception:
+        x_fish_key = None
+    groq_key_enc = request.cookies.get("__groq_key")
+    try:
+        x_groq_key = decrypt_value(groq_key_enc) if groq_key_enc else None
+    except Exception:
+        x_groq_key = None
+
     mode = (body.mode if body else None) or "synthesize"
     chunk_ids = body.chunk_ids if body else None
 
@@ -802,13 +814,25 @@ async def edit_chunk(
 async def retry_chunk(
     episode_id: str,
     chunk_id: str,
+    request: Request,
     from_stage: str = "p2",
     cascade: bool = True,
-    x_fish_key: str | None = Header(None, alias="X-Fish-Key"),
-    x_groq_key: str | None = Header(None, alias="X-Groq-Key"),
     session: AsyncSession = Depends(get_session),
     prefect_client: Any = Depends(get_prefect_client),
 ) -> RetryResponse:
+    from server.core.crypto import decrypt_value
+
+    fish_key_enc = request.cookies.get("__fish_key")
+    try:
+        x_fish_key = decrypt_value(fish_key_enc) if fish_key_enc else None
+    except Exception:
+        x_fish_key = None
+    groq_key_enc = request.cookies.get("__groq_key")
+    try:
+        x_groq_key = decrypt_value(groq_key_enc) if groq_key_enc else None
+    except Exception:
+        x_groq_key = None
+
     chunk_repo = ChunkRepo(session)
     chunk = await chunk_repo.get(chunk_id)
     if chunk is None or chunk.episode_id != episode_id:
