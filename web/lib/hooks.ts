@@ -8,6 +8,13 @@ import { api, getApiUrl } from "./api-client";
 import { connectSSE } from "./sse-client";
 import type { StageEventData } from "./sse-client";
 
+function apiError(err: unknown): Error {
+  if (typeof err === "object" && err !== null && "detail" in err) {
+    return new Error((err as { detail: string }).detail);
+  }
+  return new Error(typeof err === "string" ? err : JSON.stringify(err));
+}
+
 // ---------------------------------------------------------------------------
 // Type aliases from generated OpenAPI schemas
 // ---------------------------------------------------------------------------
@@ -45,7 +52,7 @@ interface HookResult<T> {
 export function useEpisodes(): HookResult<EpisodeSummary[]> {
   const swr = useSWR<EpisodeSummary[]>("api:episodes", async () => {
     const { data, error } = await api.GET("/episodes");
-    if (error) throw new Error(String(error));
+    if (error) throw apiError(error);
     return (data ?? []).map(toEpisodeSummary);
   });
   return {
@@ -63,7 +70,7 @@ export function useEpisode(id: string | null): HookResult<Episode> {
       const { data, error } = await api.GET("/episodes/{episode_id}", {
         params: { path: { episode_id: id! } },
       });
-      if (error) throw new Error(String(error));
+      if (error) throw apiError(error);
       return toEpisode(data!);
     },
     {
@@ -105,14 +112,14 @@ export async function createEpisode(id: string, file: File): Promise<void> {
       return fd;
     },
   });
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
 }
 
 export async function deleteEpisode(id: string): Promise<void> {
   const { error } = await api.DELETE("/episodes/{episode_id}", {
     params: { path: { episode_id: id } },
   });
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
 }
 
 export async function duplicateEpisode(
@@ -123,14 +130,14 @@ export async function duplicateEpisode(
     params: { path: { episode_id: id } },
     body: { newId },
   });
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
 }
 
 export async function archiveEpisode(id: string): Promise<void> {
   const { error } = await api.POST("/episodes/{episode_id}/archive", {
     params: { path: { episode_id: id } },
   });
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
 }
 
 export async function runEpisode(
@@ -142,7 +149,7 @@ export async function runEpisode(
     params: { path: { episode_id: id } },
     body: { mode, chunkIds: chunkIds ?? null } as never,
   });
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
   return data!.flowRunId;
 }
 
@@ -186,7 +193,7 @@ export async function retryChunk(
       },
     },
   );
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
   return data!.flowRunId;
 }
 
@@ -204,7 +211,7 @@ export async function finalizeTake(
       },
     },
   );
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
   return data!.flowRunId;
 }
 
@@ -223,7 +230,7 @@ export function useEpisodeLogs(id: string | null, tail = 50) {
           query: { tail },
         },
       });
-      if (error) throw new Error(String(error));
+      if (error) throw apiError(error);
       return data?.lines ?? [];
     },
     {
@@ -240,7 +247,7 @@ export async function updateConfig(
     params: { path: { episode_id: id } },
     body: { config },
   });
-  if (error) throw new Error(String(error));
+  if (error) throw apiError(error);
   return data!.config;
 }
 
