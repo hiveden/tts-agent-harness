@@ -35,6 +35,7 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
   const badge = STATUS_BADGE[episode.status] ?? STATUS_BADGE.ready;
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
+  const [exporting, setExporting] = useState(false);
 
   const handleScriptDownload = useCallback(async () => {
     try {
@@ -181,13 +182,28 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
               下载脚本 (.json)
             </DropdownMenuItem>
             {episode.status === "done" && (
-              <DropdownMenuItem asChild>
-                <a
-                  href={`${getApiUrl()}/episodes/${episode.id}/export`}
-                  download
-                >
-                  导出产物 (.zip)
-                </a>
+              <DropdownMenuItem
+                disabled={exporting}
+                onClick={async () => {
+                  if (exporting) return;
+                  setExporting(true);
+                  try {
+                    const res = await fetch(`${getApiUrl()}/episodes/${episode.id}/export`, { credentials: "include" });
+                    if (!res.ok) throw new Error(await res.text());
+                    const blob = await res.blob();
+                    const a = document.createElement("a");
+                    a.href = URL.createObjectURL(blob);
+                    a.download = `${episode.id}-export.zip`;
+                    a.click();
+                    URL.revokeObjectURL(a.href);
+                  } catch (e) {
+                    toast.error("导出失败", { description: (e as Error).message });
+                  } finally {
+                    setExporting(false);
+                  }
+                }}
+              >
+                {exporting ? "导出中..." : "导出产物 (.zip)"}
               </DropdownMenuItem>
             )}
             {episode.status === "failed" && !running && (
