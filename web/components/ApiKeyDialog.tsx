@@ -147,7 +147,7 @@ export function ApiKeyDialog({ open, onClose }: Props) {
             title="Groq API Key"
             description={<>用于 ASR 语音转写（P2v 阶段）。<strong className="text-neutral-700 dark:text-neutral-300">必填</strong>，否则无法验证发音质量和生成字幕时间戳。免费额度足够日常使用。</>}
             inputId="groq-api-key-input"
-            placeholder="gsk_..."
+            placeholder="粘贴 API Key"
             value={groqKey}
             onChange={setGroqKey}
             savedMask={groqSavedMask}
