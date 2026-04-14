@@ -1,9 +1,10 @@
 "use client";
 
-import { memo, useCallback, useEffect, useRef, useState } from "react";
+import { memo, useCallback, useState } from "react";
 import type { Chunk, ChunkEdit, ChunkStatus, StageName } from "@/lib/types";
 import { getDisplaySubtitle, stripControlMarkers } from "@/lib/utils";
 import { useHarnessStore } from "@/lib/store";
+import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { KaraokeSubtitle } from "./KaraokeSubtitle";
 import { RetryRow } from "./RetryRow";
 import { StagePipeline } from "./StagePipeline";
@@ -62,43 +63,15 @@ export const ChunkRow = memo(function ChunkRow({
   synthesizing = false,
   getAudioUrl,
 }: Props) {
-  // --- Zustand selectors (fine-grained, auto shallow-compare) ---
-  const isPlaying = useHarnessStore((s) => s.playingChunkId === chunk.id);
+  // --- Zustand selectors ---
   const isEditing = useHarnessStore((s) => s.editing === chunk.id);
   const edit = useHarnessStore((s) => s.edits[chunk.id]);
-  const togglePlay = useHarnessStore((s) => s.togglePlay);
   const startEditing = useHarnessStore((s) => s.startEditing);
   const cancelEditing = useHarnessStore((s) => s.cancelEditing);
 
   const dirty = computeDirty(edit);
   const isDirty = dirty !== null;
   const hasSubField = chunk.subtitleText != null;
-  const audioRef = useRef<HTMLAudioElement>(null);
-  const [currentTime, setCurrentTime] = useState(0);
-
-  const onPlay = () => togglePlay(chunk.id);
-  const onEdit = () => startEditing(chunk.id);
-
-  const seekingRef = useRef(false);
-
-  useEffect(() => {
-    const el = audioRef.current;
-    if (!el) return;
-    if (isPlaying) {
-      // Skip if handleSeek is managing play
-      if (seekingRef.current) {
-        seekingRef.current = false;
-        return;
-      }
-      el.play().catch((e) => {
-        console.warn("audio play failed", e);
-      });
-    } else {
-      el.pause();
-      el.currentTime = 0;
-      setCurrentTime(0);
-    }
-  }, [isPlaying]);
 
   const currentTakeForUrl = chunk.takes.find((t) => t.id === chunk.selectedTakeId);
   const cacheBust = currentTakeForUrl?.createdAt
@@ -127,6 +100,9 @@ export const ChunkRow = memo(function ChunkRow({
   const currentTake = chunk.takes.find((t) => t.id === chunk.selectedTakeId);
   const durationS = currentTake?.durationS ?? 0;
 
+  // --- Audio player (single source of truth for play/pause/seek) ---
+  const player = useAudioPlayer(chunk.id, durationS);
+
   const [verifyExpanded, setVerifyExpanded] = useState(false);
   const toggleVerify = useCallback(() => setVerifyExpanded((v) => !v), []);
 
@@ -134,37 +110,9 @@ export const ChunkRow = memo(function ChunkRow({
   const canPlay = hasAudio && !isDirty;
   const needsSynth = chunk.status === "pending" && !isDirty;
 
-  const handleSeek = (timeS: number) => {
-    if (!canPlay) return;
-    const el = audioRef.current;
-    if (!el) return;
-    const target = Math.max(0, Math.min(durationS, timeS));
+  const onEdit = () => startEditing(chunk.id);
 
-    const doSeek = () => {
-      el.currentTime = target;
-      setCurrentTime(target);
-    };
-
-    if (!isPlaying) {
-      // Start playing, then seek after play starts
-      const playAndSeek = async () => {
-        seekingRef.current = true;
-        onPlay();
-        // Wait for audio to be ready before seeking
-        if (el.readyState < 1) {
-          await new Promise<void>((resolve) =>
-            el.addEventListener("loadedmetadata", () => resolve(), { once: true })
-          );
-        }
-        doSeek();
-        // Ensure play happens after seek
-        try { await el.play(); } catch {}
-      };
-      playAndSeek();
-    } else {
-      doSeek();
-    }
-  };
+  const { isPlaying } = player;
 
   const rowBg = isPlaying
     ? "bg-blue-50 dark:bg-blue-900/20 shadow-[inset_3px_0_0_#2563eb]"
@@ -221,7 +169,7 @@ export const ChunkRow = memo(function ChunkRow({
         ) : (
           <button
             type="button"
-            onClick={onPlay}
+            onClick={player.toggle}
             disabled={!canPlay}
             title={isDirty ? "Has staged changes, Apply first" : ""}
             className={`w-7 h-7 inline-flex items-center justify-center rounded ${
@@ -241,9 +189,9 @@ export const ChunkRow = memo(function ChunkRow({
               text={displayText}
               durationS={durationS}
               isPlaying={isPlaying}
-              currentTime={currentTime}
+              currentTime={player.currentTime}
               baseColorClass={baseColor}
-              onSeek={canPlay ? handleSeek : undefined}
+              onSeek={canPlay ? player.seekTo : undefined}
             />
           </div>
           {dirtyBadge ? (
@@ -320,14 +268,9 @@ export const ChunkRow = memo(function ChunkRow({
         {audioUrl ? (
           <audio
             key={audioUrl}
-            ref={audioRef}
+            ref={player.ref}
             src={audioUrl}
             preload="metadata"
-            onTimeUpdate={(e) => setCurrentTime(e.currentTarget.currentTime)}
-            onEnded={() => {
-              setCurrentTime(0);
-              onPlay();
-            }}
             className="hidden"
           />
         ) : null}

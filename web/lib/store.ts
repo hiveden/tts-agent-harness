@@ -27,6 +27,7 @@ interface HarnessState {
   startEditing: (cid: string) => void;
   cancelEditing: () => void;
   togglePlay: (cid: string) => void;
+  setPlayingChunkId: (cid: string | null) => void;
   stageEdit: (cid: string, draft: ChunkEdit) => void;
   discardEdits: () => void;
   openDrawer: (cid: string, stage: StageName) => void;
@@ -71,6 +72,7 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   cancelEditing: () => set({ editing: null }),
 
   togglePlay: (cid) => set((s) => ({ playingChunkId: s.playingChunkId === cid ? null : cid })),
+  setPlayingChunkId: (cid) => set({ playingChunkId: cid }),
 
   stageEdit: (cid, draft) => set((s) => {
     const next = { ...s.edits };
