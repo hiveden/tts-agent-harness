@@ -217,11 +217,14 @@ function KeySection({
         <div className="flex gap-2">
           <input
             id={inputId}
-            type="password"
+            type="text"
             value={value}
-            onChange={(e) => { onChange(e.target.value); if (status === "fail") onChange(e.target.value); }}
+            onChange={(e) => { onChange(e.target.value); }}
             placeholder={placeholder}
             autoComplete="off"
+            data-1p-ignore
+            data-lpignore="true"
+            data-form-type="other"
             className="flex-1 px-3 py-2 text-sm rounded border border-neutral-300 dark:border-neutral-600 bg-white dark:bg-neutral-800 text-neutral-900 dark:text-neutral-100 placeholder-neutral-400 focus:outline-none focus:ring-2 focus:ring-neutral-400 dark:focus:ring-neutral-500"
             onKeyDown={(e) => { if (e.key === "Enter" && value.trim() && !testing) onSave(); }}
           />
