@@ -15,8 +15,8 @@ const GROQ_STORAGE_KEY = "groq-api-key";
 
 function maskKey(key: string): string {
   if (!key) return "";
-  if (key.length <= 4) return "*".repeat(key.length);
-  return "*".repeat(key.length - 4) + key.slice(-4);
+  if (key.length <= 8) return "****" + key.slice(-4);
+  return "****..." + key.slice(-4);
 }
 
 interface Props {
@@ -82,7 +82,7 @@ export function ApiKeyDialog({ open, onClose }: Props) {
 
   return (
     <Dialog open={open} onOpenChange={(v) => !v && onClose()}>
-      <DialogContent className="max-w-sm">
+      <DialogContent className="max-w-sm" onPointerDownOutside={(e) => e.preventDefault()}>
         <DialogHeader>
           <DialogTitle>API Keys</DialogTitle>
           <DialogDescription>
