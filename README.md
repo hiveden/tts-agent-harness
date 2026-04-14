@@ -2,6 +2,8 @@
 
 确定性视频脚本转语音加字幕生产工具。输入脚本 JSON，输出 per-shot WAV + 时间对齐字幕。
 
+**在线 Demo**: https://hiveden-tts.fly.dev
+
 ## 架构
 
 ```
