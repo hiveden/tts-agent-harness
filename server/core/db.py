@@ -27,7 +27,18 @@ DEFAULT_DATABASE_URL = "postgresql+asyncpg://harness:harness@localhost:5432/harn
 
 
 def _database_url() -> str:
-    return os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+    url = os.environ.get("DATABASE_URL", DEFAULT_DATABASE_URL)
+    # Fly Postgres gives postgres:// but asyncpg needs postgresql+asyncpg://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # asyncpg uses ?ssl= not ?sslmode= — translate Fly Postgres format
+    url = url.replace("?sslmode=disable", "?ssl=disable")
+    url = url.replace("&sslmode=disable", "&ssl=disable")
+    url = url.replace("?sslmode=require", "?ssl=require")
+    url = url.replace("&sslmode=require", "&ssl=require")
+    return url
 
 
 @lru_cache(maxsize=1)

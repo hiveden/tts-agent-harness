@@ -18,8 +18,14 @@ def _configured_token() -> str | None:
     return os.environ.get("HARNESS_API_TOKEN") or None
 
 
+_PUBLIC_PATHS = {"/healthz", "/docs", "/openapi.json"}
+
+
 async def verify_token(request: Request) -> None:
     """FastAPI dependency — call via ``Depends(verify_token)``."""
+    if request.url.path in _PUBLIC_PATHS:
+        return
+
     expected = _configured_token()
     if expected is None:
         # Dev mode — no auth required.

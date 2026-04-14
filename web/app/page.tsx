@@ -9,6 +9,8 @@ import { useEpisodes, useEpisode, useEpisodeLogs, getAudioUrl } from "@/lib/hook
 import { getApiUrl } from "@/lib/api-client";
 import { useConfirm } from "@/hooks/useConfirm";
 import { usePrompt } from "@/hooks/usePrompt";
+import { useTheme } from "@/components/Providers";
+import { Sun, Moon, KeyRound } from "lucide-react";
 
 import { EpisodeSidebar } from "@/components/EpisodeSidebar";
 import { EpisodeHeader } from "@/components/EpisodeHeader";
@@ -111,6 +113,20 @@ export default function Page() {
   const [apiKeyOpen, setApiKeyOpen] = useState(false);
   const [synthesizingCid, setSynthesizingCid] = useState<string | null>(null);
 
+  function ThemeToggle() {
+    const { resolvedTheme, setTheme } = useTheme();
+    return (
+      <button
+        type="button"
+        onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
+        className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
+        title="Toggle dark mode"
+      >
+        {resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
+      </button>
+    );
+  }
+
   return (
     <div className="h-screen flex flex-col bg-neutral-50 dark:bg-neutral-900 text-neutral-900 dark:text-neutral-100 overflow-hidden">
       {/* Header */}
@@ -120,8 +136,12 @@ export default function Page() {
           <h1 className="font-semibold text-sm">TTS Harness</h1>
           <span className="text-xs text-neutral-400 dark:text-neutral-500 ml-1">v2</span>
         </div>
-        <div className="ml-auto flex items-center gap-3">
-          <span className="text-xs text-neutral-500 dark:text-neutral-400 font-mono">localhost:3010</span>
+        <div className="ml-auto flex items-center gap-2">
+          <button type="button" onClick={() => setApiKeyOpen(true)} title="API Key 设置"
+            className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400">
+            <KeyRound size={14} />
+          </button>
+          <ThemeToggle />
           <button type="button" onClick={() => store.setHelpOpen(true)} title="Help"
             className="w-6 h-6 rounded-full border border-neutral-300 dark:border-neutral-600 text-neutral-500 dark:text-neutral-400 hover:bg-neutral-100 dark:hover:bg-neutral-800 text-xs font-semibold">?</button>
         </div>

@@ -26,16 +26,13 @@ from server.api.routes.episodes import router as episodes_router
 from server.api.routes.health import router as health_router
 from server.api.sse import router as sse_router
 from server.api.sse import start_listener, stop_listener
+from server.core.db import _database_url
 
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
     # Start SSE listener
-    db_url = os.environ.get(
-        "DATABASE_URL",
-        "postgresql+asyncpg://harness:harness@localhost:55432/harness",
-    )
-    await start_listener(db_url)
+    await start_listener(_database_url())
     yield
     await stop_listener()
 
@@ -49,12 +46,16 @@ app = FastAPI(
 
 # --- middleware ---
 
+_cors_env = os.environ.get("CORS_ORIGINS", "")
+_cors_origins = (
+    [o.strip() for o in _cors_env.split(",") if o.strip()]
+    if _cors_env
+    else ["http://localhost:3010", "http://127.0.0.1:3010"]
+)
+
 app.add_middleware(
     CORSMiddleware,
-    allow_origins=[
-        "http://localhost:3010",
-        "http://127.0.0.1:3010",
-    ],
+    allow_origins=_cors_origins,
     allow_credentials=True,
     allow_methods=["*"],
     allow_headers=["*"],

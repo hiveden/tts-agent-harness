@@ -32,6 +32,16 @@ def _resolve_url() -> str:
     if not url:
         # Dev default mirrors docker/.env.example
         url = "postgresql+asyncpg://harness:harness@localhost:5432/harness"
+    # Fly Postgres gives postgres:// but asyncpg needs postgresql+asyncpg://
+    if url.startswith("postgres://"):
+        url = url.replace("postgres://", "postgresql+asyncpg://", 1)
+    elif url.startswith("postgresql://") and "+asyncpg" not in url:
+        url = url.replace("postgresql://", "postgresql+asyncpg://", 1)
+    # asyncpg uses ?ssl= not ?sslmode= — translate Fly Postgres format
+    url = url.replace("?sslmode=disable", "?ssl=disable")
+    url = url.replace("&sslmode=disable", "&ssl=disable")
+    url = url.replace("?sslmode=require", "?ssl=require")
+    url = url.replace("&sslmode=require", "&ssl=require")
     return url
 
 

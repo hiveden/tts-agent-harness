@@ -53,7 +53,11 @@ async def start_listener(database_url: str) -> None:
 
         # Strip the sqlalchemy prefix to get a raw asyncpg DSN.
         dsn = database_url.replace("postgresql+asyncpg://", "postgresql://")
-        _listener_conn = await asyncpg.connect(dsn)
+        # Detect ssl=disable in query string and pass ssl=False explicitly
+        ssl_off = "ssl=disable" in dsn
+        if ssl_off:
+            dsn = dsn.replace("?ssl=disable", "").replace("&ssl=disable", "")
+        _listener_conn = await asyncpg.connect(dsn, ssl=False if ssl_off else None)
         await _listener_conn.add_listener("episode_events", _on_notify)
         logger.info("SSE listener started on channel 'episode_events'")
     except Exception:

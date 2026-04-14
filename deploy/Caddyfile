@@ -1,0 +1,29 @@
+# Reverse proxy — unified entry point on :8080
+# API routes → FastAPI (8100), everything else → Next.js (3010)
+
+:8080 {
+	# FastAPI routes
+	handle /episodes {
+		reverse_proxy localhost:8100
+	}
+	handle /episodes/* {
+		reverse_proxy localhost:8100
+	}
+	handle /audio/* {
+		reverse_proxy localhost:8100
+	}
+	handle /healthz {
+		reverse_proxy localhost:8100
+	}
+	handle /docs {
+		reverse_proxy localhost:8100
+	}
+	handle /openapi.json {
+		reverse_proxy localhost:8100
+	}
+
+	# Everything else → Next.js
+	handle {
+		reverse_proxy localhost:3010
+	}
+}

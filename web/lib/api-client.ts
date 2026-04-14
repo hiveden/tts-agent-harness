@@ -9,8 +9,9 @@ import createClient from "openapi-fetch";
 import type { paths } from "./gen/openapi";
 
 const API_URL =
-  process.env.NEXT_PUBLIC_API_URL?.replace(/\/+$/, "") ||
-  "http://localhost:8100";
+  process.env.NEXT_PUBLIC_API_URL !== undefined
+    ? process.env.NEXT_PUBLIC_API_URL.replace(/\/+$/, "")
+    : "http://localhost:8100";
 
 const API_TOKEN = process.env.NEXT_PUBLIC_API_TOKEN || "";
 

@@ -1,8 +1,7 @@
 "use client";
 
 import { useState, useCallback } from "react";
-import { useTheme } from "@/components/Providers";
-import { Lock, Sun, Moon, KeyRound } from "lucide-react";
+import { Lock } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import type { Episode, EpisodeStatus } from "@/lib/types";
 import { getApiUrl } from "@/lib/api-client";
@@ -16,7 +15,6 @@ interface Props {
   onRun: (mode: string) => void;
   onCancel?: () => void;
   onViewScript?: () => void;
-  onApiKeyClick?: () => void;
   failedCount?: number;
 }
 
@@ -31,9 +29,8 @@ const STATUS_BADGE: Record<
   empty: { bg: "bg-neutral-50 dark:bg-neutral-800", fg: "text-neutral-500 dark:text-neutral-400", br: "border-neutral-200 dark:border-neutral-700", label: "empty" },
 };
 
-export function EpisodeHeader({ episode, running, onRun, onCancel, onViewScript, onApiKeyClick, failedCount = 0 }: Props) {
+export function EpisodeHeader({ episode, running, onRun, onCancel, onViewScript, failedCount = 0 }: Props) {
   const badge = STATUS_BADGE[episode.status] ?? STATUS_BADGE.ready;
-  const { resolvedTheme, setTheme } = useTheme();
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
 
@@ -85,22 +82,6 @@ export function EpisodeHeader({ episode, running, onRun, onCancel, onViewScript,
         <span className="ml-auto text-[11px] text-neutral-400 dark:text-neutral-500 font-mono">
           {episode.chunks.length} chunks · {totalDurationS.toFixed(1)}s
         </span>
-        <button
-          type="button"
-          onClick={onApiKeyClick}
-          className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
-          title="API Key 设置"
-        >
-          <KeyRound size={14} />
-        </button>
-        <button
-          type="button"
-          onClick={() => setTheme(resolvedTheme === "dark" ? "light" : "dark")}
-          className="w-7 h-7 rounded-full flex items-center justify-center hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-500 dark:text-neutral-400"
-          title="Toggle dark mode"
-        >
-          {resolvedTheme === "dark" ? <Sun size={14} /> : <Moon size={14} />}
-        </button>
       </div>
       <div className="flex gap-2 items-center">
         {episode.locked ? (

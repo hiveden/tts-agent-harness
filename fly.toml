@@ -11,13 +11,12 @@ primary_region = 'nrt'
   min_machines_running = 0
 
 [[vm]]
-  memory = '1gb'
+  memory = '2gb'
   cpu_kind = 'shared'
   cpus = 1
 
 [env]
-  API_PORT = '8100'
-  WEB_PORT = '3010'
-  NEXT_PUBLIC_API_URL = 'http://localhost:8100'
-  WHISPERX_URL = ''
   LOG_LEVEL = 'info'
+  WHISPERX_URL = ''
+  # CORS not needed in prod (same-origin via Caddy)
+  CORS_ORIGINS = ''

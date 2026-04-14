@@ -1,34 +1,52 @@
 # ============================================================
-# TTS Agent Harness — Single-stage Dockerfile (lighter build)
-# Runs FastAPI (8100) + Next.js (3010) in one container
+# TTS Agent Harness — Single container
+# Caddy (8080) → FastAPI (8100) + Next.js (3010)
 # ============================================================
 
-FROM node:20-slim
+# Stage 1: build Next.js
+FROM node:20-slim AS web-build
+WORKDIR /app/web
+COPY web/package.json web/package-lock.json ./
+RUN npm ci --ignore-scripts
+COPY web/ ./
+ENV NEXT_PUBLIC_API_URL=
+RUN npm run build
 
-# System deps + Python
+# Stage 2: runtime
+FROM python:3.11-slim
+
+# Node 20 runtime (must match Stage 1 build version)
 RUN apt-get update && apt-get install -y --no-install-recommends \
-    python3 python3-pip python3-venv ffmpeg curl supervisor \
+    ffmpeg curl supervisor ca-certificates gnupg \
+    && curl -fsSL https://deb.nodesource.com/setup_20.x | bash - \
+    && apt-get install -y --no-install-recommends nodejs \
     && rm -rf /var/lib/apt/lists/*
+
+# Caddy static binary (let BuildKit inject TARGETARCH automatically)
+ARG TARGETARCH
+RUN curl -fsSL "https://caddyserver.com/api/download?os=linux&arch=${TARGETARCH}" -o /usr/bin/caddy \
+    && chmod +x /usr/bin/caddy
 
 WORKDIR /app
 
-# --- Next.js build ---
-COPY web/package.json web/package-lock.json ./web/
-RUN cd web && npm ci --ignore-scripts
-COPY web/ ./web/
-ENV NEXT_PUBLIC_API_URL=http://localhost:8100
-RUN cd web && npm run build
+# Copy Next.js standalone build from stage 1
+COPY --from=web-build /app/web/.next/standalone ./web/.next/standalone
+COPY --from=web-build /app/web/.next/static ./web/.next/standalone/.next/static
+COPY --from=web-build /app/web/public ./web/.next/standalone/public
 
-# --- Python deps ---
+# Python deps
 COPY server/pyproject.toml ./server/
-RUN python3 -m venv /app/.venv && \
-    /app/.venv/bin/pip install --no-cache-dir ./server 2>/dev/null || \
-    /app/.venv/bin/pip install --no-cache-dir -e ./server
+RUN pip install --no-cache-dir ./server
 COPY server/ ./server/
 
-# Supervisor config
+# Deploy configs
 COPY deploy/supervisord.conf /etc/supervisor/conf.d/supervisord.conf
+COPY deploy/Caddyfile /etc/caddy/Caddyfile
+COPY deploy/start.sh /app/start.sh
+RUN chmod +x /app/start.sh
 
-EXPOSE 3010 8100
+HEALTHCHECK CMD curl -f http://localhost:8080/healthz || exit 1
 
-CMD ["/usr/bin/supervisord", "-c", "/etc/supervisor/conf.d/supervisord.conf"]
+EXPOSE 8080
+
+CMD ["/app/start.sh"]
