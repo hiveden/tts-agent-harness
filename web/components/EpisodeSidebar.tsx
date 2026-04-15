@@ -102,6 +102,44 @@ export function EpisodeSidebar({
           </button>
         </div>
       </div>
+      {batchMode && (
+        <div className="px-2 py-1.5 border-b border-neutral-100 dark:border-neutral-700 flex flex-col gap-1.5 shrink-0">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {batchSelected.size} / {episodes.length} 已选
+            </span>
+            <button
+              type="button"
+              onClick={onBatchSelectAll}
+              className="text-[11px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+            >
+              {batchSelected.size === episodes.length ? "取消全选" : "全选"}
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            {onBatchRun && (
+              <button
+                type="button"
+                disabled={batchSelected.size === 0 || batchRunning}
+                onClick={onBatchRun}
+                className="flex-1 text-xs py-1.5 rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {batchRunning ? "运行中..." : `运行 (${batchSelected.size})`}
+              </button>
+            )}
+            {onBatchExport && (
+              <button
+                type="button"
+                disabled={batchSelected.size === 0 || batchExporting}
+                onClick={onBatchExport}
+                className="flex-1 text-xs py-1.5 rounded font-medium bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {batchExporting ? "导出中..." : `导出 (${batchSelected.size})`}
+              </button>
+            )}
+          </div>
+        </div>
+      )}
       <div className="flex-1 overflow-y-auto p-1.5">
         {error ? (
           <div className="p-3 text-xs text-red-500 text-center">
@@ -147,46 +185,7 @@ export function EpisodeSidebar({
           );
         })}
       </div>
-      {batchMode ? (
-        <div className="p-2 border-t border-neutral-100 dark:border-neutral-700 flex flex-col gap-1.5">
-          <div className="flex items-center justify-between px-1">
-            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
-              {batchSelected.size} / {episodes.length} 已选
-            </span>
-            <button
-              type="button"
-              onClick={onBatchSelectAll}
-              className="text-[11px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
-            >
-              {batchSelected.size === episodes.length ? "取消全选" : "全选"}
-            </button>
-          </div>
-          <div className="flex gap-1.5">
-            {onBatchRun && (
-              <button
-                type="button"
-                disabled={batchSelected.size === 0 || batchRunning}
-                onClick={onBatchRun}
-                className="flex-1 text-xs py-1.5 rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {batchRunning ? "运行中..." : `运行 (${batchSelected.size})`}
-              </button>
-            )}
-            {onBatchExport && (
-              <button
-                type="button"
-                disabled={batchSelected.size === 0 || batchExporting}
-                onClick={onBatchExport}
-                className="flex-1 text-xs py-1.5 rounded font-medium bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
-              >
-                {batchExporting ? "导出中..." : `导出 (${batchSelected.size})`}
-              </button>
-            )}
-          </div>
-        </div>
-      ) : (
-        <div className="p-3 border-t border-neutral-100 dark:border-neutral-700 text-[11px] text-neutral-400 dark:text-neutral-500 font-mono">{episodes.length} episodes</div>
-      )}
+      <div className="p-3 border-t border-neutral-100 dark:border-neutral-700 text-[11px] text-neutral-400 dark:text-neutral-500 font-mono">{episodes.length} episodes</div>
     </aside>
   );
 }
