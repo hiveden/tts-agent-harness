@@ -437,8 +437,18 @@ async def run_episode(
     mode = (body.mode if body else None) or "synthesize"
     chunk_ids = body.chunk_ids if body else None
 
-    repo = EpisodeRepo(session)
-    ep = await repo.get(episode_id)
+    # Atomic status check: SELECT FOR UPDATE prevents concurrent runs
+    from server.core.models import Episode as EpisodeModel
+    stmt = (
+        select(EpisodeModel)
+        .where(EpisodeModel.id == episode_id)
+        .with_for_update(nowait=True)
+    )
+    try:
+        result = await session.execute(stmt)
+    except Exception:
+        raise DomainError("invalid_state", "episode is locked by another operation")
+    ep = result.scalar_one_or_none()
     if ep is None:
         raise DomainError("not_found", f"episode '{episode_id}' not found")
 
@@ -738,7 +748,7 @@ async def run_episode(
         _running_tasks[episode_id] = task
         task.add_done_callback(lambda _: _running_tasks.pop(episode_id, None))
 
-    await repo.set_status(episode_id, "running")
+    await EpisodeRepo(session).set_status(episode_id, "running")
 
     event_repo = EventRepo(session)
     await event_repo.write(
@@ -1430,16 +1440,19 @@ async def export_episode(
                         "\n".join(f"file '{p.resolve()}'" for p in concat_entries)
                     )
                     shot_wav = tmp_path / f"{shot_id}.wav"
-                    import subprocess
-                    proc = subprocess.run(
-                        ["ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-                         "-f", "concat", "-safe", "0",
-                         "-i", str(concat_list),
-                         "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le",
-                         str(shot_wav)],
-                        capture_output=True, timeout=30,
+                    import asyncio as _aio
+                    proc = await _aio.create_subprocess_exec(
+                        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
+                        "-f", "concat", "-safe", "0",
+                        "-i", str(concat_list),
+                        "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le",
+                        str(shot_wav),
+                        stdout=_aio.subprocess.PIPE,
+                        stderr=_aio.subprocess.PIPE,
                     )
+                    _, stderr = await _aio.wait_for(proc.communicate(), timeout=30)
                     if proc.returncode != 0:
+                        log.warning("ffmpeg concat failed for %s: %s", shot_id, stderr.decode()[:200])
                         continue
                     shot_wav_bytes = shot_wav.read_bytes()
 
