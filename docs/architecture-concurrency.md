@@ -305,7 +305,9 @@ create_async_engine(
 
 ## 4. 实施路线
 
-### Phase 1：单 Worker 不卡（改动小，收益大）
+### Phase 1：消除阻塞 + 并发安全
+
+**驱动场景**：单人批量操作（上传多 episode → 批量 run → 批量导出），导出阻塞全站。
 
 | 改动 | 文件 | 工作量 |
 |------|------|-------|
@@ -313,27 +315,33 @@ create_async_engine(
 | episode run 原子化 `with_for_update` | `episodes.py` | 20 行 |
 | DB 连接池扩容 | `db.py` | 3 行 |
 
-**效果**：单 worker 可正常服务 3-5 人并发，所有操作非阻塞。
+**效果**：事件循环不再被阻塞，单 worker 可交替处理多个导出 + 试听 + SSE。防止 pipeline 重复触发。
 
-### Phase 2：Export 异步化
+### Phase 2：Export 任务队列化
+
+**驱动场景**：批量导出 3-5 个 episode，每个 10-30s，用户不愿干等。且为 Phase 3 多人并发打基础——重活必须离开 API 进程。
 
 | 改动 | 文件 | 工作量 |
 |------|------|-------|
 | export 逻辑抽成 Prefect flow | 新建 `flows/tasks/export.py` | ~100 行 |
 | API 端改为 POST 触发 + GET 查询状态 + GET 下载 | `episodes.py` | ~50 行 |
-| 前端改为轮询/SSE 等待 + 下载链接 | `EpisodeHeader.tsx` | ~30 行 |
+| 前端改为提交任务 → SSE/轮询等待 → 下载链接 | `EpisodeHeader.tsx` | ~30 行 |
+| export 产物存 MinIO，下载走 StreamingResponse | `episodes.py` + `storage.py` | ~20 行 |
 
-**效果**：export 不再阻塞 API，支持多 episode 并发导出。
+**效果**：export 完全异步，API 即时返回。支持批量提交，互不阻塞。产物持久化到 MinIO，可重复下载。
 
-### Phase 3：去全局状态，多 Worker 就绪
+### Phase 3：无状态 API + 多 Worker
+
+**驱动场景**：多人同时操作线上系统。
 
 | 改动 | 文件 | 工作量 |
 |------|------|-------|
-| `_running_tasks` → DB 字段 + Prefect 查询 | `episodes.py` | ~40 行 |
-| `_subscribers` → per-worker LISTEN 连接 | `sse.py` | ~30 行 |
-| supervisord 启动命令改 Gunicorn | `supervisord.conf` | 3 行 |
+| `_running_tasks` → DB 字段 + Prefect 状态查询 | `episodes.py` | ~40 行 |
+| `_subscribers` → per-worker 独立 LISTEN 连接 | `sse.py` | ~30 行 |
+| supervisord 启动命令改 Gunicorn + UvicornWorker | `supervisord.conf` | 3 行 |
+| dev 模式 pipeline 也走 Prefect（消除 asyncio.Task） | `episodes.py` | ~30 行 |
 
-**效果**：API 完全无状态，可 `--workers 4` 水平扩展。
+**效果**：API 完全无状态，`--workers 4` 水平扩展。每个 Phase 独立可交付，但架构一脉相承——Phase 2 的 Prefect export 直接复用于 Phase 3 的多 worker 场景。
 
 ---
 
