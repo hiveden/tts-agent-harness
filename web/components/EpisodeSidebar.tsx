@@ -15,6 +15,15 @@ interface Props {
   onDuplicate?: (id: string) => void;
   onArchive?: (id: string) => void;
   error?: Error | null;
+  batchMode: boolean;
+  batchSelected: Set<string>;
+  onBatchModeToggle: () => void;
+  onBatchToggle: (id: string) => void;
+  onBatchSelectAll: () => void;
+  onBatchRun?: () => void;
+  onBatchExport?: () => void;
+  batchRunning?: boolean;
+  batchExporting?: boolean;
 }
 
 const STATUS_DOT: Record<EpisodeStatus, string> = {
@@ -27,6 +36,7 @@ const STATUS_DOT: Record<EpisodeStatus, string> = {
 
 export function EpisodeSidebar({
   episodes, selectedId, collapsed, onToggleCollapse, onSelect, onNewEpisode, onDelete, onDuplicate, onArchive, error,
+  batchMode, batchSelected, onBatchModeToggle, onBatchToggle, onBatchSelectAll, onBatchRun, onBatchExport, batchRunning, batchExporting,
 }: Props) {
   // Collapsed: narrow strip with expand button
   if (collapsed) {
@@ -73,7 +83,15 @@ export function EpisodeSidebar({
       <div className="px-3 py-3 flex items-center justify-between border-b border-neutral-100 dark:border-neutral-700">
         <span className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Episodes</span>
         <div className="flex items-center gap-1">
-          <button type="button" onClick={onNewEpisode} className="text-xs px-2 py-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400">+ New</button>
+          <button
+            type="button"
+            onClick={onBatchModeToggle}
+            className={`text-xs px-2 py-1 rounded ${batchMode ? "bg-neutral-900 dark:bg-white text-white dark:text-neutral-900" : "hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400"}`}
+            title={batchMode ? "退出批量" : "批量操作"}
+          >
+            {batchMode ? "完成" : "批量"}
+          </button>
+          {!batchMode && <button type="button" onClick={onNewEpisode} className="text-xs px-2 py-1 rounded hover:bg-neutral-100 dark:hover:bg-neutral-800 text-neutral-600 dark:text-neutral-400">+ New</button>}
           <button
             type="button"
             onClick={onToggleCollapse}
@@ -97,8 +115,16 @@ export function EpisodeSidebar({
           const suffix = ep.status === "running" ? "..." : ep.status === "done" ? `${ep.doneCount}/${ep.chunkCount}` : ep.status;
           const hasMenu = onDelete || onDuplicate || onArchive;
           return (
-            <div key={ep.id} className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 mb-0.5 ${sel ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}>
-              <button type="button" onClick={() => onSelect(ep.id)} className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
+            <div key={ep.id} className={`w-full text-left px-2.5 py-2 rounded flex items-center gap-2 mb-0.5 ${sel && !batchMode ? "bg-neutral-900 text-white dark:bg-white dark:text-neutral-900" : "hover:bg-neutral-100 dark:hover:bg-neutral-800"}`}>
+              {batchMode && (
+                <input
+                  type="checkbox"
+                  checked={batchSelected.has(ep.id)}
+                  onChange={() => onBatchToggle(ep.id)}
+                  className="w-3.5 h-3.5 shrink-0 accent-neutral-900 dark:accent-white cursor-pointer"
+                />
+              )}
+              <button type="button" onClick={() => batchMode ? onBatchToggle(ep.id) : onSelect(ep.id)} className="flex items-center gap-2 flex-1 min-w-0 cursor-pointer">
                 <span className={`w-1.5 h-1.5 rounded-full shrink-0 ${dotClass}`} />
                 <span className="font-medium text-sm truncate">{ep.title}</span>
                 {ep.locked && <Lock size={10} className={`shrink-0 ${sel ? "text-neutral-300 dark:text-neutral-600" : "text-neutral-400 dark:text-neutral-500"}`} />}
@@ -121,7 +147,46 @@ export function EpisodeSidebar({
           );
         })}
       </div>
-      <div className="p-3 border-t border-neutral-100 dark:border-neutral-700 text-[11px] text-neutral-400 dark:text-neutral-500 font-mono">{episodes.length} episodes</div>
+      {batchMode ? (
+        <div className="p-2 border-t border-neutral-100 dark:border-neutral-700 flex flex-col gap-1.5">
+          <div className="flex items-center justify-between px-1">
+            <span className="text-[11px] text-neutral-500 dark:text-neutral-400">
+              {batchSelected.size} / {episodes.length} 已选
+            </span>
+            <button
+              type="button"
+              onClick={onBatchSelectAll}
+              className="text-[11px] text-neutral-500 dark:text-neutral-400 hover:text-neutral-700 dark:hover:text-neutral-200"
+            >
+              {batchSelected.size === episodes.length ? "取消全选" : "全选"}
+            </button>
+          </div>
+          <div className="flex gap-1.5">
+            {onBatchRun && (
+              <button
+                type="button"
+                disabled={batchSelected.size === 0 || batchRunning}
+                onClick={onBatchRun}
+                className="flex-1 text-xs py-1.5 rounded font-medium bg-blue-600 text-white hover:bg-blue-700 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {batchRunning ? "运行中..." : `运行 (${batchSelected.size})`}
+              </button>
+            )}
+            {onBatchExport && (
+              <button
+                type="button"
+                disabled={batchSelected.size === 0 || batchExporting}
+                onClick={onBatchExport}
+                className="flex-1 text-xs py-1.5 rounded font-medium bg-neutral-900 dark:bg-white text-white dark:text-neutral-900 hover:bg-neutral-700 dark:hover:bg-neutral-200 disabled:opacity-40 disabled:cursor-not-allowed"
+              >
+                {batchExporting ? "导出中..." : `导出 (${batchSelected.size})`}
+              </button>
+            )}
+          </div>
+        </div>
+      ) : (
+        <div className="p-3 border-t border-neutral-100 dark:border-neutral-700 text-[11px] text-neutral-400 dark:text-neutral-500 font-mono">{episodes.length} episodes</div>
+      )}
     </aside>
   );
 }

@@ -24,6 +24,8 @@ interface HarnessState {
   drawerOpen: { cid: string; stage: StageName } | null;
   helpOpen: boolean;
   sidebarCollapsed: boolean;
+  batchMode: boolean;
+  batchSelected: Set<string>;
 
   // --- UI actions ---
   selectEpisode: (id: string) => void;
@@ -43,6 +45,10 @@ interface HarnessState {
   closeDrawer: () => void;
   setHelpOpen: (open: boolean) => void;
   setSidebarCollapsed: (collapsed: boolean) => void;
+  setBatchMode: (on: boolean) => void;
+  toggleBatchSelect: (id: string) => void;
+  setBatchSelectAll: (ids: string[]) => void;
+  clearBatchSelect: () => void;
 
   // --- Computed ---
   dirtyCount: () => { tts: number; sub: number };
@@ -73,6 +79,8 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   drawerOpen: null,
   helpOpen: false,
   sidebarCollapsed: false,
+  batchMode: false,
+  batchSelected: new Set<string>(),
 
   // --- UI actions ---
   selectEpisode: (id) => {
@@ -127,6 +135,15 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
     set({ sidebarCollapsed: collapsed });
     if (typeof window !== "undefined") window.localStorage.setItem("tts-harness:sidebarCollapsed", String(collapsed));
   },
+
+  setBatchMode: (on) => set({ batchMode: on, batchSelected: on ? get().batchSelected : new Set() }),
+  toggleBatchSelect: (id) => set((s) => {
+    const next = new Set(s.batchSelected);
+    if (next.has(id)) next.delete(id); else next.add(id);
+    return { batchSelected: next };
+  }),
+  setBatchSelectAll: (ids) => set({ batchSelected: new Set(ids) }),
+  clearBatchSelect: () => set({ batchSelected: new Set() }),
 
   // --- Computed ---
   dirtyCount: () => {

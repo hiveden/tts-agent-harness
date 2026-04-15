@@ -12,6 +12,7 @@ import { useAction } from "@/hooks/useAction";
 import { useTheme } from "@/components/Providers";
 import { Sun, Moon, KeyRound } from "lucide-react";
 
+import { toast } from "sonner";
 import { EpisodeSidebar } from "@/components/EpisodeSidebar";
 import { EpisodeHeader } from "@/components/EpisodeHeader";
 import { EditBanner } from "@/components/EditBanner";
@@ -217,6 +218,83 @@ export default function Page() {
     { errorPrefix: "合成失败" },
   );
 
+  // --- Batch operations ---
+  const batchMode = useHarnessStore((s) => s.batchMode);
+  const batchSelected = useHarnessStore((s) => s.batchSelected);
+  const [batchRunning, setBatchRunning] = useState(false);
+  const [batchExporting, setBatchExporting] = useState(false);
+
+  const handleBatchRun = useCallback(async () => {
+    if (batchSelected.size === 0) return;
+    setBatchRunning(true);
+    try {
+      for (const epId of batchSelected) {
+        try {
+          await fetch(`${getApiUrl()}/episodes/${epId}/run`, {
+            method: "POST",
+            headers: { "Content-Type": "application/json" },
+            body: JSON.stringify({ mode: "synthesize" }),
+            credentials: "include",
+          });
+        } catch { /* continue with next */ }
+      }
+      await mutateList();
+      toast.success(`已触发 ${batchSelected.size} 个 episode 运行`);
+    } finally {
+      setBatchRunning(false);
+    }
+  }, [batchSelected, mutateList]);
+
+  const handleBatchExport = useCallback(async () => {
+    if (batchSelected.size === 0) return;
+    setBatchExporting(true);
+    try {
+      // Trigger all exports concurrently
+      await Promise.all(
+        Array.from(batchSelected).map((epId) =>
+          fetch(`${getApiUrl()}/episodes/${epId}/export`, {
+            method: "POST",
+            credentials: "include",
+          })
+        ),
+      );
+      toast.info(`已触发 ${batchSelected.size} 个导出，完成后逐个下载`);
+
+      // Poll and download each
+      let downloaded = 0;
+      for (const epId of batchSelected) {
+        for (let i = 0; i < 120; i++) {
+          await new Promise((r) => setTimeout(r, 1000));
+          const res = await fetch(`${getApiUrl()}/episodes/${epId}/export/status`, { credentials: "include" });
+          if (!res.ok) continue;
+          const status = await res.json();
+          if (status.status === "done") {
+            const dlRes = await fetch(`${getApiUrl()}/episodes/${epId}/export/download`, { credentials: "include" });
+            if (dlRes.ok) {
+              const blob = await dlRes.blob();
+              const a = document.createElement("a");
+              a.href = URL.createObjectURL(blob);
+              a.download = `${epId}-export.zip`;
+              a.click();
+              URL.revokeObjectURL(a.href);
+              downloaded++;
+            }
+            break;
+          }
+          if (status.status === "failed") {
+            toast.error(`${epId} 导出失败`, { description: status.error });
+            break;
+          }
+        }
+      }
+      toast.success(`导出完成 ${downloaded}/${batchSelected.size}`);
+    } catch (e) {
+      toast.error("批量导出失败", { description: (e as Error).message });
+    } finally {
+      setBatchExporting(false);
+    }
+  }, [batchSelected]);
+
   function ThemeToggle() {
     const { resolvedTheme, setTheme } = useTheme();
     return (
@@ -264,6 +342,19 @@ export default function Page() {
           onDelete={async (id) => { const ok = await confirmAction(`确认删除 ${id}？`, { destructive: true }); if (ok) await execDelete(id); }}
           onDuplicate={async (id) => { const newId = await promptAction(`复制 ${id} 到新 ID:`, { defaultValue: `${id}-copy` }); if (newId) await execDuplicate(id, newId); }}
           onArchive={async (id) => { const ok = await confirmAction(`归档 ${id}？`); if (ok) await execArchive(id); }}
+          batchMode={batchMode}
+          batchSelected={batchSelected}
+          onBatchModeToggle={() => store.setBatchMode(!batchMode)}
+          onBatchToggle={store.toggleBatchSelect}
+          onBatchSelectAll={() => {
+            const allIds = (episodes ?? []).map((e) => e.id);
+            if (batchSelected.size === allIds.length) store.clearBatchSelect();
+            else store.setBatchSelectAll(allIds);
+          }}
+          onBatchRun={handleBatchRun}
+          onBatchExport={handleBatchExport}
+          batchRunning={batchRunning}
+          batchExporting={batchExporting}
         />
 
         {/* Main content */}
