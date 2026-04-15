@@ -17,6 +17,9 @@ interface HarnessState {
   selectedId: string | null;
   editing: string | null;
   playingChunkId: string | null;
+  continuousPlay: boolean;
+  playbackRate: number;
+  chunkPlayOrder: string[];
   edits: EditBatch;
   drawerOpen: { cid: string; stage: StageName } | null;
   helpOpen: boolean;
@@ -28,6 +31,12 @@ interface HarnessState {
   cancelEditing: () => void;
   togglePlay: (cid: string) => void;
   setPlayingChunkId: (cid: string | null) => void;
+  setContinuousPlay: (v: boolean) => void;
+  setPlaybackRate: (rate: number) => void;
+  setChunkPlayOrder: (ids: string[]) => void;
+  playAll: () => void;
+  stopAll: () => void;
+  advanceToNext: () => void;
   stageEdit: (cid: string, draft: ChunkEdit) => void;
   discardEdits: () => void;
   openDrawer: (cid: string, stage: StageName) => void;
@@ -57,6 +66,9 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   selectedId: null,
   editing: null,
   playingChunkId: null,
+  continuousPlay: false,
+  playbackRate: 1,
+  chunkPlayOrder: [],
   edits: {},
   drawerOpen: null,
   helpOpen: false,
@@ -71,8 +83,32 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   startEditing: (cid) => set((s) => ({ editing: s.editing === cid ? null : cid })),
   cancelEditing: () => set({ editing: null }),
 
-  togglePlay: (cid) => set((s) => ({ playingChunkId: s.playingChunkId === cid ? null : cid })),
+  togglePlay: (cid) => set((s) => ({
+    playingChunkId: s.playingChunkId === cid ? null : cid,
+    continuousPlay: false,
+  })),
   setPlayingChunkId: (cid) => set({ playingChunkId: cid }),
+
+  setContinuousPlay: (v) => set({ continuousPlay: v }),
+  setPlaybackRate: (rate) => set({ playbackRate: rate }),
+  setChunkPlayOrder: (ids) => set({ chunkPlayOrder: ids }),
+
+  playAll: () => {
+    const order = get().chunkPlayOrder;
+    if (order.length === 0) return;
+    set({ continuousPlay: true, playingChunkId: order[0] });
+  },
+  stopAll: () => set({ continuousPlay: false, playingChunkId: null }),
+  advanceToNext: () => {
+    const { chunkPlayOrder, playingChunkId } = get();
+    const idx = chunkPlayOrder.indexOf(playingChunkId ?? "");
+    const next = idx >= 0 && idx < chunkPlayOrder.length - 1 ? chunkPlayOrder[idx + 1] : null;
+    if (next) {
+      set({ playingChunkId: next });
+    } else {
+      set({ continuousPlay: false, playingChunkId: null });
+    }
+  },
 
   stageEdit: (cid, draft) => set((s) => {
     const next = { ...s.edits };

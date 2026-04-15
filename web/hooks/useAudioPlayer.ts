@@ -15,15 +15,23 @@ export function useAudioPlayer(chunkId: string, durationS: number): AudioPlayer 
 
   const isPlaying = useHarnessStore((s) => s.playingChunkId === chunkId);
   const setPlayingChunkId = useHarnessStore((s) => s.setPlayingChunkId);
+  const continuousPlay = useHarnessStore((s) => s.continuousPlay);
+  const advanceToNext = useHarnessStore((s) => s.advanceToNext);
+  const playbackRate = useHarnessStore((s) => s.playbackRate);
 
-  // Sync time from audio element
+  // Sync time + handle ended
   useEffect(() => {
     const el = ref.current;
     if (!el) return;
     const onTime = () => setCurrentTime(el.currentTime);
     const onEnded = () => {
       setCurrentTime(0);
-      setPlayingChunkId(null);
+      const { continuousPlay } = useHarnessStore.getState();
+      if (continuousPlay) {
+        advanceToNext();
+      } else {
+        setPlayingChunkId(null);
+      }
     };
     el.addEventListener("timeupdate", onTime);
     el.addEventListener("ended", onEnded);
@@ -31,16 +39,34 @@ export function useAudioPlayer(chunkId: string, durationS: number): AudioPlayer 
       el.removeEventListener("timeupdate", onTime);
       el.removeEventListener("ended", onEnded);
     };
-  }, [setPlayingChunkId]);
+  }, [setPlayingChunkId, advanceToNext]);
 
-  // When another chunk starts playing, pause this one
+  // Sync playbackRate to audio element
   useEffect(() => {
-    if (!isPlaying && ref.current) {
-      ref.current.pause();
-      ref.current.currentTime = 0;
+    if (ref.current) ref.current.playbackRate = playbackRate;
+  }, [playbackRate]);
+
+  // When isPlaying changes: pause if false, auto-play if true (for continuous mode)
+  useEffect(() => {
+    const el = ref.current;
+    if (!el) return;
+    if (!isPlaying) {
+      el.pause();
+      el.currentTime = 0;
       setCurrentTime(0);
+    } else {
+      // Auto-play when this chunk becomes active (continuous play or manual)
+      el.playbackRate = playbackRate;
+      if (el.readyState >= 1) {
+        el.play().catch(() => {});
+      } else {
+        el.addEventListener("loadedmetadata", () => {
+          el.playbackRate = playbackRate;
+          el.play().catch(() => {});
+        }, { once: true });
+      }
     }
-  }, [isPlaying]);
+  }, [isPlaying, playbackRate]);
 
   const ensureReady = useCallback(async () => {
     const el = ref.current;
@@ -61,21 +87,25 @@ export function useAudioPlayer(chunkId: string, durationS: number): AudioPlayer 
     } else {
       setPlayingChunkId(chunkId);
       ensureReady().then((ready) => {
-        if (ready) ready.play().catch(() => {});
+        if (ready) {
+          ready.playbackRate = playbackRate;
+          ready.play().catch(() => {});
+        }
       });
     }
-  }, [chunkId, isPlaying, setPlayingChunkId, ensureReady]);
+  }, [chunkId, isPlaying, setPlayingChunkId, ensureReady, playbackRate]);
 
   const seekTo = useCallback((timeS: number) => {
     const target = Math.max(0, Math.min(durationS, timeS));
     setPlayingChunkId(chunkId);
     ensureReady().then((el) => {
       if (!el) return;
+      el.playbackRate = playbackRate;
       el.currentTime = target;
       setCurrentTime(target);
       el.play().catch(() => {});
     });
-  }, [chunkId, durationS, setPlayingChunkId, ensureReady]);
+  }, [chunkId, durationS, setPlayingChunkId, ensureReady, playbackRate]);
 
   return { ref, currentTime, isPlaying, toggle, seekTo };
 }

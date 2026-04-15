@@ -25,6 +25,7 @@ import { TtsConfigBar } from "@/components/TtsConfigBar";
 import { StageLogDrawer } from "@/components/StageLogDrawer";
 import { ScriptPreviewDialog } from "@/components/ScriptPreviewDialog";
 import { ApiKeyDialog } from "@/components/ApiKeyDialog";
+import { ContinuousPlayBar } from "@/components/ContinuousPlayBar";
 
 export default function Page() {
   // --- Store state ---
@@ -54,6 +55,14 @@ export default function Page() {
     c.status === "failed" || c.stageRuns.some((sr) => sr.status === "failed")
   ).length ?? 0;
   const dirtyCount = store.dirtyCount();
+
+  // Sync playable chunk order for continuous playback
+  const playableIds = (episode?.chunks ?? [])
+    .filter((c) => c.status === "synth_done" || c.status === "verified" || c.status === "needs_review")
+    .map((c) => c.id);
+  useEffect(() => {
+    store.setChunkPlayOrder(playableIds);
+  }, [playableIds.join(",")]); // eslint-disable-line react-hooks/exhaustive-deps
 
   // --- Action hooks (unified loading / error toast / dedup) ---
   const [execRun, runPending] = useAction(
@@ -303,6 +312,9 @@ export default function Page() {
                     <div className="px-6 py-2 bg-white dark:bg-neutral-900 border-b border-neutral-100 dark:border-neutral-700 flex items-center z-10 shrink-0">
                       <h3 className="text-xs font-medium text-neutral-500 dark:text-neutral-400 uppercase tracking-wide">Chunks</h3>
                       <span className="ml-2 text-[11px] text-neutral-400 dark:text-neutral-500">{episode.chunks.length} items</span>
+                      <div className="ml-auto">
+                        <ContinuousPlayBar />
+                      </div>
                     </div>
                     <ChunksTable
                       episodeId={episode.id}
