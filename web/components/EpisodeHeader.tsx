@@ -188,14 +188,45 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
                   if (exporting) return;
                   setExporting(true);
                   try {
-                    const res = await fetch(`${getApiUrl()}/episodes/${episode.id}/export`, { credentials: "include" });
-                    if (!res.ok) throw new Error(await res.text());
-                    const blob = await res.blob();
-                    const a = document.createElement("a");
-                    a.href = URL.createObjectURL(blob);
-                    a.download = `${episode.id}-export.zip`;
-                    a.click();
-                    URL.revokeObjectURL(a.href);
+                    // 1. Trigger async export
+                    const triggerRes = await fetch(
+                      `${getApiUrl()}/episodes/${episode.id}/export`,
+                      { method: "POST", credentials: "include" },
+                    );
+                    if (!triggerRes.ok) throw new Error(await triggerRes.text());
+                    toast.info("导出已开始，完成后自动下载");
+
+                    // 2. Poll for completion
+                    const maxAttempts = 120; // 2 min max
+                    for (let i = 0; i < maxAttempts; i++) {
+                      await new Promise((r) => setTimeout(r, 1000));
+                      const statusRes = await fetch(
+                        `${getApiUrl()}/episodes/${episode.id}/export/status`,
+                        { credentials: "include" },
+                      );
+                      if (!statusRes.ok) continue;
+                      const status = await statusRes.json();
+                      if (status.status === "done") {
+                        // 3. Download
+                        const dlRes = await fetch(
+                          `${getApiUrl()}/episodes/${episode.id}/export/download`,
+                          { credentials: "include" },
+                        );
+                        if (!dlRes.ok) throw new Error(await dlRes.text());
+                        const blob = await dlRes.blob();
+                        const a = document.createElement("a");
+                        a.href = URL.createObjectURL(blob);
+                        a.download = `${episode.id}-export.zip`;
+                        a.click();
+                        URL.revokeObjectURL(a.href);
+                        toast.success("导出完成");
+                        return;
+                      }
+                      if (status.status === "failed") {
+                        throw new Error(status.error || "export failed");
+                      }
+                    }
+                    throw new Error("导出超时");
                   } catch (e) {
                     toast.error("导出失败", { description: (e as Error).message });
                   } finally {

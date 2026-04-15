@@ -1324,189 +1324,107 @@ async def get_episode_script(
 
 
 # ---------------------------------------------------------------------------
-# GET /episodes/{id}/export — download production assets as zip
+# ---------------------------------------------------------------------------
+# Export — async background export with SSE progress
 # ---------------------------------------------------------------------------
 
+# Track running export tasks (dev mode only; production uses Prefect)
+_export_tasks: dict[str, asyncio.Task] = {}
 
-@router.get("/episodes/{episode_id}/export")
-async def export_episode(
+
+@router.post("/episodes/{episode_id}/export")
+async def trigger_export(
     episode_id: str,
-    format: str = Query("shots", description="Export format: shots (per-shot WAV + subtitles)"),
     session: AsyncSession = Depends(get_session),
     storage: MinIOStorage = Depends(get_storage),
 ):
-    """Export episode production assets as a zip file.
+    """Trigger async export. Returns immediately with status.
 
-    Produces Remotion-compatible output:
-      {episode_id}/
-        shot01.wav, shot02.wav, ...
-        subtitles.json   — {shot_id: [{id, text, start, end}]} with shot-level offsets
-        durations.json   — [{id, duration_s, file}]
+    The export runs in the background and emits SSE events:
+    export_started → export_finished (with zip_key) / export_failed.
     """
-    import io
-    import json
-    import tempfile
-    import wave
-    import zipfile
-    from collections import defaultdict
-    from pathlib import Path
-
-    from fastapi.responses import StreamingResponse
-
-    from server.core.p6_logic import (
-        ChunkTiming,
-        compute_chunk_offsets,
-        generate_silence,
-        parse_srt,
-        sort_chunk_timings,
-    )
-    from server.core.storage import chunk_subtitle_key, chunk_take_key
+    from server.core.export_logic import export_zip_key, run_export
 
     repo = EpisodeRepo(session)
     ep = await repo.get(episode_id)
     if ep is None:
         raise DomainError("not_found", f"episode '{episode_id}' not found")
 
-    chunk_repo = ChunkRepo(session)
-    take_repo = TakeRepo(session)
-    chunks = await chunk_repo.list_by_episode(episode_id)
+    # Prevent duplicate exports
+    if episode_id in _export_tasks and not _export_tasks[episode_id].done():
+        return {"status": "running", "message": "export already in progress"}
 
-    # Build sorted list with takes
-    items_by_shot: dict[str, list] = defaultdict(list)
-    for c in sorted(chunks, key=lambda c: (c.shot_id, c.idx)):
-        if c.selected_take_id and c.status in ("verified", "synth_done"):
-            take = await take_repo.select(c.selected_take_id)
-            if take:
-                items_by_shot[c.shot_id].append({"chunk": c, "take": take})
+    from server.core.db import get_sessionmaker
+    session_factory = get_sessionmaker()
 
-    if not items_by_shot:
-        raise DomainError("invalid_state", "no verified chunks to export")
+    async def _run():
+        try:
+            await run_export(episode_id, session_factory=session_factory, storage=storage)
+        except Exception:
+            log.exception("Export failed for %s", episode_id)
 
-    # P6 constants (must match p6_concat.py defaults)
-    PADDING_S = 0.2
-    SHOT_GAP_S = 0.5
+    task = asyncio.create_task(_run())
+    _export_tasks[episode_id] = task
+    task.add_done_callback(lambda _: _export_tasks.pop(episode_id, None))
 
-    buf = io.BytesIO()
-    with zipfile.ZipFile(buf, "w", zipfile.ZIP_DEFLATED) as zf:
-        durations = []
-        all_subtitles: dict[str, list] = {}
+    return {"status": "started", "message": "export triggered"}
 
-        for shot_id, items in items_by_shot.items():
-            # Build ChunkTimings for offset calculation within this shot
-            timings = sort_chunk_timings([
-                ChunkTiming(
-                    chunk_id=item["chunk"].id,
-                    shot_id=shot_id,
-                    idx=item["chunk"].idx,
-                    duration_s=float(item["take"].duration_s or 0.0),
-                )
-                for item in items
-            ])
 
-            # Compute per-chunk offsets within this shot (same-shot padding only)
-            offsets = compute_chunk_offsets(timings, PADDING_S, SHOT_GAP_S)
+@router.get("/episodes/{episode_id}/export/status")
+async def export_status(
+    episode_id: str,
+    session: AsyncSession = Depends(get_session),
+):
+    """Check export status by querying the latest export event."""
+    from server.core.export_logic import export_zip_key
 
-            # --- Build per-shot WAV with padding ---
-            with tempfile.TemporaryDirectory() as tmp:
-                tmp_path = Path(tmp)
-                concat_entries: list[Path] = []
+    # Check latest export event
+    stmt = (
+        select(Event)
+        .where(Event.episode_id == episode_id, Event.kind.in_(["export_started", "export_finished", "export_failed"]))
+        .order_by(Event.id.desc())
+        .limit(1)
+    )
+    result = await session.execute(stmt)
+    event = result.scalar_one_or_none()
 
-                # Generate silence files
-                sil_padding = tmp_path / "sil_padding.wav"
-                await generate_silence(sil_padding, PADDING_S, sample_rate=44100)
+    if event is None:
+        return {"status": "none"}
+    if event.kind == "export_started":
+        return {"status": "running"}
+    if event.kind == "export_finished":
+        return {
+            "status": "done",
+            "zip_key": event.payload.get("zip_key"),
+            "size_bytes": event.payload.get("size_bytes"),
+        }
+    # export_failed
+    return {"status": "failed", "error": event.payload.get("error", "unknown")}
 
-                for i, (timing, item) in enumerate(zip(timings, items)):
-                    take = item["take"]
-                    audio_key = take.audio_uri.split("//", 1)[-1].split("/", 1)[-1] if take.audio_uri.startswith("s3://") else take.audio_uri
-                    try:
-                        wav_bytes = await storage.download_bytes(audio_key)
-                    except Exception:
-                        continue
-                    chunk_wav = tmp_path / f"chunk_{i:03d}.wav"
-                    chunk_wav.write_bytes(wav_bytes)
 
-                    if i > 0:
-                        concat_entries.append(sil_padding)
-                    concat_entries.append(chunk_wav)
-
-                if not concat_entries:
-                    continue
-
-                if len(concat_entries) == 1:
-                    shot_wav_bytes = concat_entries[0].read_bytes()
-                else:
-                    concat_list = tmp_path / "concat.txt"
-                    concat_list.write_text(
-                        "\n".join(f"file '{p.resolve()}'" for p in concat_entries)
-                    )
-                    shot_wav = tmp_path / f"{shot_id}.wav"
-                    import asyncio as _aio
-                    proc = await _aio.create_subprocess_exec(
-                        "ffmpeg", "-y", "-hide_banner", "-loglevel", "error",
-                        "-f", "concat", "-safe", "0",
-                        "-i", str(concat_list),
-                        "-ar", "44100", "-ac", "1", "-c:a", "pcm_s16le",
-                        str(shot_wav),
-                        stdout=_aio.subprocess.PIPE,
-                        stderr=_aio.subprocess.PIPE,
-                    )
-                    _, stderr = await _aio.wait_for(proc.communicate(), timeout=30)
-                    if proc.returncode != 0:
-                        log.warning("ffmpeg concat failed for %s: %s", shot_id, stderr.decode()[:200])
-                        continue
-                    shot_wav_bytes = shot_wav.read_bytes()
-
-                zf.writestr(f"{episode_id}/{shot_id}.wav", shot_wav_bytes)
-
-                # Duration from WAV header
-                try:
-                    with io.BytesIO(shot_wav_bytes) as wio:
-                        with wave.open(wio) as wf:
-                            dur = wf.getnframes() / wf.getframerate()
-                except Exception:
-                    dur = sum(float(item["take"].duration_s) for item in items)
-
-                durations.append({
-                    "id": shot_id,
-                    "duration_s": round(dur, 3),
-                    "file": f"{shot_id}.wav",
-                })
-
-            # --- Build Remotion-format subtitles with offsets ---
-            shot_subs = []
-            sub_counter = len([s for subs in all_subtitles.values() for s in subs])
-            for timing, offset in zip(timings, offsets):
-                sub_key = chunk_subtitle_key(episode_id, timing.chunk_id)
-                try:
-                    srt_bytes = await storage.download_bytes(sub_key)
-                    cues = parse_srt(srt_bytes.decode("utf-8"))
-                except Exception:
-                    continue
-                for cue in cues:
-                    sub_counter += 1
-                    shot_subs.append({
-                        "id": f"sub_{sub_counter:03d}",
-                        "text": cue.text,
-                        "start": round(cue.start_s + offset, 3),
-                        "end": round(cue.end_s + offset, 3),
-                    })
-            if shot_subs:
-                all_subtitles[shot_id] = shot_subs
-
-        # Write subtitles.json (Remotion format)
-        zf.writestr(f"{episode_id}/subtitles.json", json.dumps(all_subtitles, ensure_ascii=False, indent=2))
-
-        # Write durations.json
-        zf.writestr(f"{episode_id}/durations.json", json.dumps(durations, ensure_ascii=False, indent=2))
-
-    buf.seek(0)
+@router.get("/episodes/{episode_id}/export/download")
+async def download_export(
+    episode_id: str,
+    storage: MinIOStorage = Depends(get_storage),
+):
+    """Download the exported zip from MinIO."""
     from urllib.parse import quote
+
+    from fastapi.responses import StreamingResponse
+
+    from server.core.export_logic import export_zip_key
+
+    zip_key = export_zip_key(episode_id)
+    if not await storage.exists(zip_key):
+        raise DomainError("not_found", "export not found — trigger export first")
+
+    zip_bytes = await storage.download_bytes(zip_key)
     safe_filename = quote(f"{episode_id}.zip")
     return StreamingResponse(
-        buf,
+        iter([zip_bytes]),
         media_type="application/zip",
         headers={
             "Content-Disposition": f"attachment; filename*=UTF-8''{safe_filename}",
-            "Content-Length": str(buf.getbuffer().nbytes),
+            "Content-Length": str(len(zip_bytes)),
         },
     )
