@@ -1487,11 +1487,13 @@ async def export_episode(
         zf.writestr(f"{episode_id}/durations.json", json.dumps(durations, ensure_ascii=False, indent=2))
 
     buf.seek(0)
+    from urllib.parse import quote
+    safe_filename = quote(f"{episode_id}.zip")
     return StreamingResponse(
         buf,
         media_type="application/zip",
         headers={
-            "Content-Disposition": f'attachment; filename="{episode_id}.zip"',
+            "Content-Disposition": f"attachment; filename*=UTF-8''{safe_filename}",
             "Content-Length": str(buf.getbuffer().nbytes),
         },
     )

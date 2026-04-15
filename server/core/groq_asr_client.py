@@ -13,6 +13,7 @@ The response mapping is straightforward:
 
 from __future__ import annotations
 
+import asyncio
 import logging
 import os
 from typing import Any
@@ -22,6 +23,12 @@ import httpx
 log = logging.getLogger(__name__)
 
 GROQ_TRANSCRIPTIONS_URL = "https://api.groq.com/openai/v1/audio/transcriptions"
+
+# Module-level semaphore: limit concurrent Groq requests to avoid 429.
+_groq_semaphore = asyncio.Semaphore(3)
+
+_MAX_RETRIES = 5
+_INITIAL_BACKOFF = 2.0  # seconds
 
 
 class GroqASRClient:
@@ -36,6 +43,9 @@ class GroqASRClient:
     ) -> dict[str, Any]:
         """POST audio to Groq Whisper API and return WhisperX-compatible dict.
 
+        Includes concurrency limiting (semaphore) and exponential backoff
+        retry on 429 Too Many Requests.
+
         Returns::
 
             {
@@ -49,22 +59,44 @@ class GroqASRClient:
         if self._proxy:
             client_kwargs["proxy"] = self._proxy
 
-        async with httpx.AsyncClient(**client_kwargs) as client:
-            response = await client.post(
-                GROQ_TRANSCRIPTIONS_URL,
-                headers={"Authorization": f"Bearer {self._api_key}"},
-                files={"file": ("audio.wav", wav_bytes, "audio/wav")},
-                data={
-                    "model": "whisper-large-v3",
-                    "response_format": "verbose_json",
-                    "timestamp_granularities[]": "word",
-                    "language": language,
-                },
-            )
-            response.raise_for_status()
-            result = response.json()
+        async with _groq_semaphore:
+            async with httpx.AsyncClient(**client_kwargs) as client:
+                last_exc: Exception | None = None
+                for attempt in range(_MAX_RETRIES):
+                    response = await client.post(
+                        GROQ_TRANSCRIPTIONS_URL,
+                        headers={"Authorization": f"Bearer {self._api_key}"},
+                        files={"file": ("audio.wav", wav_bytes, "audio/wav")},
+                        data={
+                            "model": "whisper-large-v3",
+                            "response_format": "verbose_json",
+                            "timestamp_granularities[]": "word",
+                            "language": language,
+                        },
+                    )
+                    if response.status_code == 429:
+                        retry_after = response.headers.get("retry-after")
+                        backoff = (
+                            float(retry_after)
+                            if retry_after
+                            else _INITIAL_BACKOFF * (2 ** attempt)
+                        )
+                        log.warning(
+                            "Groq 429 rate limited, retry %d/%d after %.1fs",
+                            attempt + 1, _MAX_RETRIES, backoff,
+                        )
+                        last_exc = httpx.HTTPStatusError(
+                            "429 Too Many Requests",
+                            request=response.request,
+                            response=response,
+                        )
+                        await asyncio.sleep(backoff)
+                        continue
+                    response.raise_for_status()
+                    return self._to_whisperx_format(response.json())
 
-        return self._to_whisperx_format(result)
+                # All retries exhausted
+                raise last_exc  # type: ignore[misc]
 
     @staticmethod
     def _to_whisperx_format(groq_response: dict[str, Any]) -> dict[str, Any]:
