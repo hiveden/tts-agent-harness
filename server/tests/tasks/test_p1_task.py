@@ -102,7 +102,7 @@ SAMPLE_SCRIPT = {
 
 
 @pytest.mark.asyncio
-async def test_run_writes_chunks_events_and_marks_ready(engine_and_maker) -> None:
+async def test_run_writes_chunks_and_events_without_touching_episode_status(engine_and_maker) -> None:
     _, maker = engine_and_maker
     storage = InMemoryStorage()
     ep_id = "ep-happy"
@@ -126,10 +126,13 @@ async def test_run_writes_chunks_events_and_marks_ready(engine_and_maker) -> Non
         assert all(r.status == "pending" for r in rows)
         assert all(r.boundary_hash and len(r.boundary_hash) == 16 for r in rows)
 
-        # episode status flipped
+        # episode status untouched — p1_chunk is a stage task and does not
+        # manage episode-level status. _seed_episode creates with "empty";
+        # P1 must leave it alone. The orchestration layer (API route /
+        # Prefect flow) owns episode.status transitions.
         ep = await s.get(Episode, ep_id)
         assert ep is not None
-        assert ep.status == "ready"
+        assert ep.status == "empty"
 
         # events emitted
         events = (await s.execute(select(Event).order_by(Event.id))).scalars().all()
@@ -246,7 +249,9 @@ async def test_empty_segments_still_marks_ready(engine_and_maker) -> None:
     async with maker() as s:
         ep = await s.get(Episode, ep_id)
         assert ep is not None
-        assert ep.status == "ready"
+        # Empty-script run still leaves episode.status untouched (was "empty"
+        # after seeding and stays "empty" — p1_chunk does not own this field).
+        assert ep.status == "empty"
         rows = (await s.execute(select(Chunk))).scalars().all()
         assert rows == []
 

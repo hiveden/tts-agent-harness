@@ -153,7 +153,15 @@ async def _run_p1(
 
                 inserted = await chunk_repo.bulk_insert(chunks)
 
-                await ep_repo.set_status(episode_id, "ready")
+                # NB: p1_chunk does not manage episode-level status. Doing so
+                # was the root cause of a nasty bug — when this task ran as
+                # the first step of a regenerate pipeline it would flip
+                # episode.status back to "ready" while P2-P6 were still
+                # executing, which broke the UI's "running → show cancel
+                # button" contract. The owner of episode.status is the
+                # orchestration layer (the /run API route for dev runs, or
+                # the Prefect flow for production runs), which knows the
+                # whole pipeline's shape and terminal state.
 
                 await write_event(
                     session,

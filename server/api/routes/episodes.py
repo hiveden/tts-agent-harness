@@ -552,6 +552,12 @@ async def run_episode(
                     _max_chars = (body.max_chunk_chars if body and body.max_chunk_chars is not None else DEFAULT_MAX_CHUNK_CHARS)
                     result = await p1_chunk.fn(episode_id, ctx=ctx, max_chunk_chars=_max_chars)
                     _log.info("P1 done: %d chunks (max_chunk_chars=%d)", len(result.chunks), _max_chars)
+                    # chunk_only is a terminal mode — P1 is the whole pipeline.
+                    # The orchestration layer (this handler) owns the
+                    # episode-level status transition, not the stage task.
+                    async with _session_factory() as sess:
+                        await EpisodeRepo(sess).set_status(episode_id, "ready")
+                        await sess.commit()
                     return
 
                 # synthesize / retry_failed / regenerate
