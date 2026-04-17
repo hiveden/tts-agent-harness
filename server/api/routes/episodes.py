@@ -40,7 +40,12 @@ from server.core.repositories import (
     TakeRepo,
 )
 from server.core.models import Event
-from server.core.storage import MinIOStorage, episode_script_key
+from server.core.storage import (
+    MinIOStorage,
+    chunk_subtitle_key,
+    chunk_transcript_key,
+    episode_script_key,
+)
 from server.api.deps import get_prefect_client, get_session, get_storage
 
 router = APIRouter(tags=["episodes"])
@@ -1256,6 +1261,142 @@ async def get_chunk_log(
 # ---------------------------------------------------------------------------
 # GET /episodes/{id}/chunks/{cid}/stage-context?stage=p2
 # ---------------------------------------------------------------------------
+
+
+@router.get("/episodes/{episode_id}/chunks/{chunk_id}/transcript")
+async def get_chunk_transcript(
+    episode_id: str,
+    chunk_id: str,
+    storage: MinIOStorage = Depends(get_storage),
+) -> dict:
+    """Return the raw ASR transcript for a chunk.
+
+    The frontend uses this in the subtitle-timing editor panel to display
+    what the ASR heard (including mis-hearings like ThoughtWorks→Falseworks)
+    alongside each word's (start, end). Users eyeball the transcript to
+    understand why a cue's time got stretched and which word's end time
+    they should snap the cue boundary to.
+    """
+    key = chunk_transcript_key(episode_id, chunk_id)
+    try:
+        data = await storage.download_bytes(key)
+    except Exception as exc:
+        raise DomainError(
+            "not_found",
+            f"transcript not found for chunk {chunk_id}",
+        ) from exc
+    if not data:
+        raise DomainError("not_found", f"transcript empty for chunk {chunk_id}")
+    try:
+        return json.loads(data.decode("utf-8"))
+    except Exception as exc:
+        raise DomainError(
+            "invalid_state",
+            f"transcript parse failed for chunk {chunk_id}: {exc}",
+        ) from exc
+
+
+class SubtitleCueInput(_CamelBase):
+    """Shape of a single cue submitted by the editor."""
+
+    start: float
+    end: float
+    text: str
+
+
+class PutCuesRequest(_CamelBase):
+    cues: list[SubtitleCueInput]
+
+
+class PutCuesResponse(_CamelBase):
+    chunk_id: str
+    cues_count: int
+    subtitle_uri: str
+
+
+@router.put(
+    "/episodes/{episode_id}/chunks/{chunk_id}/cues",
+    response_model=PutCuesResponse,
+)
+async def put_chunk_cues(
+    episode_id: str,
+    chunk_id: str,
+    body: PutCuesRequest,
+    session: AsyncSession = Depends(get_session),
+    storage: MinIOStorage = Depends(get_storage),
+) -> PutCuesResponse:
+    """Overwrite a chunk's subtitle cues and regenerate the SRT.
+
+    Called by the frontend subtitle-timing editor after the user manually
+    adjusts cue start/end times. This bypasses the P5 alignment algorithm
+    and persists exactly the cues the user wants — useful when ASR
+    mis-hearing (especially on long English words inside Chinese text)
+    caused the auto-alignment to stretch a cue beyond its actual spoken
+    duration and the user has visually corrected it.
+
+    Two write targets stay in sync:
+    - ``chunks.metadata["subtitle_cues"]`` drives the karaoke UI
+    - ``chunks/<id>/subtitle.srt`` in MinIO drives the export zip and
+      downstream Remotion consumer
+    """
+    from server.core.p5_logic import build_srt
+
+    # 1. Validate chunk exists and belongs to the episode.
+    chunk = await ChunkRepo(session).get(chunk_id)
+    if chunk is None or chunk.episode_id != episode_id:
+        raise DomainError(
+            "not_found",
+            f"chunk '{chunk_id}' not found in episode '{episode_id}'",
+        )
+
+    # 2. Validate cue list: ordered, non-empty text, non-negative start, end >= start.
+    if not body.cues:
+        raise DomainError("invalid_input", "cues list must not be empty")
+    for i, cue in enumerate(body.cues):
+        if cue.start < 0 or cue.end < cue.start:
+            raise DomainError(
+                "invalid_input",
+                f"cue[{i}] has invalid range start={cue.start} end={cue.end}",
+            )
+        if not cue.text.strip():
+            raise DomainError(
+                "invalid_input",
+                f"cue[{i}] has empty text",
+            )
+
+    cue_dicts = [
+        {"start": float(c.start), "end": float(c.end), "text": c.text}
+        for c in body.cues
+    ]
+
+    # 3. Rebuild SRT from the supplied cues (reuses the same formatter P5 uses).
+    triples = [(c["start"], c["end"], c["text"]) for c in cue_dicts]
+    srt_doc = build_srt(triples)
+
+    # 4. Upload new SRT, overwriting the old one. Object key is stable —
+    #    re-upload replaces in MinIO.
+    subtitle_key = chunk_subtitle_key(episode_id, chunk_id)
+    try:
+        subtitle_uri = await storage.upload_bytes(
+            subtitle_key,
+            srt_doc.encode("utf-8"),
+            content_type="application/x-subrip",
+        )
+    except Exception as exc:
+        raise DomainError(
+            "invalid_state", f"subtitle upload failed: {exc}"
+        ) from exc
+
+    # 5. Persist cues to chunk metadata. ChunkRepo.set_subtitle_cues is a
+    #    read-modify-write that preserves other metadata keys.
+    await ChunkRepo(session).set_subtitle_cues(chunk_id, cue_dicts)
+    await session.commit()
+
+    return PutCuesResponse(
+        chunk_id=chunk_id,
+        cues_count=len(cue_dicts),
+        subtitle_uri=subtitle_uri,
+    )
 
 
 @router.get("/episodes/{episode_id}/chunks/{chunk_id}/stage-context")

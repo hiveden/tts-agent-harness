@@ -223,6 +223,69 @@ export function getAudioUrl(audioUri: string): string {
   return `${getApiUrl()}/audio/${encodeURIComponent(audioUri)}`;
 }
 
+// ---------------------------------------------------------------------------
+// Subtitle timing editor — fetch transcript + PUT cues
+// ---------------------------------------------------------------------------
+//
+// These endpoints were added after the last OpenAPI codegen run. Using
+// plain fetch + hand-written types keeps us unblocked; the shapes mirror
+// server/api/routes/episodes.py::get_chunk_transcript / put_chunk_cues.
+
+export interface TranscriptWord {
+  word: string;
+  start: number;
+  end: number;
+  score?: number | null;
+}
+
+export interface ChunkTranscript {
+  transcript: TranscriptWord[];
+  duration_s?: number;
+}
+
+export async function fetchChunkTranscript(
+  episodeId: string,
+  chunkId: string,
+): Promise<ChunkTranscript> {
+  const url = `${getApiUrl()}/episodes/${encodeURIComponent(episodeId)}/chunks/${encodeURIComponent(chunkId)}/transcript`;
+  const res = await fetch(url);
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`transcript fetch failed: ${detail}`);
+  }
+  return res.json();
+}
+
+export async function putChunkCues(
+  episodeId: string,
+  chunkId: string,
+  cues: Array<{ start: number; end: number; text: string }>,
+): Promise<{ cuesCount: number; subtitleUri: string }> {
+  const url = `${getApiUrl()}/episodes/${encodeURIComponent(episodeId)}/chunks/${encodeURIComponent(chunkId)}/cues`;
+  const res = await fetch(url, {
+    method: "PUT",
+    headers: { "Content-Type": "application/json" },
+    body: JSON.stringify({ cues }),
+  });
+  if (!res.ok) {
+    let detail = res.statusText;
+    try {
+      const body = await res.json();
+      detail = body.detail ?? detail;
+    } catch {
+      /* ignore */
+    }
+    throw new Error(`PUT cues failed: ${detail}`);
+  }
+  return res.json();
+}
+
 export function useEpisodeLogs(id: string | null, tail = 50) {
   return useSWR<string[]>(
     id ? `api:logs:${id}` : null,

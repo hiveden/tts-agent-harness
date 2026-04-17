@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useState } from "react";
 import type { Chunk, ChunkEdit, ChunkStatus, StageName } from "@/lib/types";
+import type { SubtitleCue } from "@/lib/karaoke";
 import { extractSubtitleCues } from "@/lib/karaoke";
 import { getDisplaySubtitle, stripControlMarkers } from "@/lib/utils";
 import { useHarnessStore } from "@/lib/store";
@@ -9,6 +10,7 @@ import { useAudioPlayer } from "@/hooks/useAudioPlayer";
 import { KaraokeSubtitle } from "./KaraokeSubtitle";
 import { RetryRow } from "./RetryRow";
 import { StagePipeline } from "./StagePipeline";
+import { SubtitleTimingEditor } from "./SubtitleTimingEditor";
 import { VerifyScoreBar } from "./VerifyScoreBar";
 import { TakeSelector } from "./TakeSelector";
 import { GRID_COLS } from "./chunks-grid";
@@ -107,6 +109,21 @@ export const ChunkRow = memo(function ChunkRow({
   const [verifyExpanded, setVerifyExpanded] = useState(false);
   const toggleVerify = useCallback(() => setVerifyExpanded((v) => !v), []);
 
+  // --- Subtitle timing editor ---
+  //
+  // When this is open we render an expanded panel below the grid row. Cues
+  // under edit live here so KaraokeSubtitle above can preview them in sync
+  // with playback without waiting for PUT /cues to round-trip. null means
+  // "panel closed — use chunk.metadata.subtitle_cues from the server".
+  const [timingCues, setTimingCues] = useState<SubtitleCue[] | null>(null);
+  const timingOpen = timingCues !== null;
+  const openTimingEditor = useCallback(() => {
+    setTimingCues(extractSubtitleCues(chunk.metadata) ?? []);
+  }, [chunk.metadata]);
+  const closeTimingEditor = useCallback(() => {
+    setTimingCues(null);
+  }, []);
+
   const hasAudio = chunk.status === "synth_done" || chunk.status === "verified" || chunk.status === "needs_review";
   const canPlay = hasAudio && !isDirty;
   const needsSynth = chunk.status === "pending" && !isDirty;
@@ -200,7 +217,9 @@ export const ChunkRow = memo(function ChunkRow({
               cues={
                 displayMode === "subtitle" &&
                 edit?.subtitleText === undefined
-                  ? extractSubtitleCues(chunk.metadata)
+                  ? // While the timing editor is open, preview locally-edited
+                    // cues so playback + karaoke reflect unsaved changes.
+                    (timingCues ?? extractSubtitleCues(chunk.metadata))
                   : undefined
               }
             />
@@ -286,7 +305,22 @@ export const ChunkRow = memo(function ChunkRow({
           />
         ) : null}
       </div>
-      <div className="py-2.5 pr-6 self-start text-right">
+      <div className="py-2.5 pr-6 self-start text-right flex items-center justify-end gap-1">
+        <button
+          type="button"
+          onClick={timingOpen ? closeTimingEditor : openTimingEditor}
+          title={timingOpen ? "Close timing editor" : "Adjust subtitle timing"}
+          disabled={!hasAudio}
+          className={`w-7 h-7 inline-flex items-center justify-center rounded ${
+            !hasAudio
+              ? "text-neutral-300 dark:text-neutral-600 cursor-not-allowed"
+              : timingOpen
+                ? "bg-amber-500 text-white hover:bg-amber-600 dark:bg-amber-600 dark:hover:bg-amber-700"
+                : "hover:bg-neutral-200 dark:hover:bg-neutral-700 text-neutral-700 dark:text-neutral-300"
+          }`}
+        >
+          ⏱
+        </button>
         <button
           type="button"
           onClick={isEditing ? cancelEditing : onEdit}
@@ -300,6 +334,27 @@ export const ChunkRow = memo(function ChunkRow({
           {isEditing ? "✕" : "✎"}
         </button>
       </div>
+      {timingOpen && (
+        // Full-width expanded panel below the grid row. Occupies all columns
+        // via absolute grid positioning. SubtitleTimingEditor is self-contained
+        // and drives karaoke preview via the lifted timingCues state above.
+        <div
+          className="col-span-full px-4 py-2 bg-neutral-50 dark:bg-neutral-900/50 border-t border-neutral-100 dark:border-neutral-700"
+          style={{ gridColumn: "1 / -1" }}
+        >
+          <SubtitleTimingEditor
+            chunk={chunk}
+            previewCues={timingCues!}
+            onCuesChange={setTimingCues}
+            onSeek={canPlay ? player.seekTo : undefined}
+            onSaved={() => {
+              // Keep the panel open after save so the user can verify by
+              // playing again; the preview cues become the new baseline.
+            }}
+            onCancel={closeTimingEditor}
+          />
+        </div>
+      )}
     </div>
   );
 }, (prev, next) => {
