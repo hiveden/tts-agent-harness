@@ -213,6 +213,12 @@ async def run_p2_synth(
                 "invalid_input", f"chunk {chunk_id} has empty text_normalized"
             )
         episode_id = chunk.episode_id
+        log.info(
+            "P2 start chunk=%s text_len=%d text=%r",
+            chunk_id,
+            len(text),
+            text[:80],
+        )
 
         if len(text) > TEXT_LENGTH_WARN_THRESHOLD:
             log.warning(
@@ -239,6 +245,7 @@ async def run_p2_synth(
     # 3. Fish call — outside DB transaction, runs under the fish-api
     #    concurrency limit via the Prefect task tag.
     fish_client = fish_factory()
+    _fish_t0 = datetime.now(timezone.utc)
     try:
         wav_bytes = await fish_client.synthesize(text, fish_params)
     except Exception as exc:  # noqa: BLE001 - classify downstream
@@ -266,6 +273,13 @@ async def run_p2_synth(
         raise FishClientError("Fish returned zero-length audio")
 
     duration_s = _wav_duration_seconds(wav_bytes)
+    log.info(
+        "P2 fish_done chunk=%s call_ms=%d audio_bytes=%d duration=%.2f",
+        chunk_id,
+        int((datetime.now(timezone.utc) - _fish_t0).total_seconds() * 1000),
+        len(wav_bytes),
+        duration_s,
+    )
 
     # 4. Upload to MinIO.
     take_id = _new_take_id()
@@ -280,6 +294,14 @@ async def run_p2_synth(
             error=f"minio upload failed: {exc}",
         )
         raise
+
+    log.info(
+        "P2 uploaded chunk=%s take=%s uri=%s duration=%.2f",
+        chunk_id,
+        take_id,
+        audio_uri,
+        duration_s,
+    )
 
     # 5. Persist take + flip chunk state + stage_finished event.
     async with _session_scope(session_factory) as session:
@@ -315,6 +337,8 @@ async def run_p2_synth(
             payload={"take_id": take.id, "audio_uri": audio_uri},
         )
         await session.commit()
+
+    log.info("P2 done chunk=%s take=%s duration=%.2f", chunk_id, take_id, duration_s)
 
     return P2Result(
         chunk_id=chunk_id,

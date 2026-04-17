@@ -163,6 +163,8 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
         episode_id = chunk.episode_id
         source_text = (chunk.subtitle_text or "").strip() or (chunk.text or "")
 
+        log.info("P5 start chunk=%s text_len=%d total_duration=%.2f take=%s", chunk_id, len(source_text), total_duration, take.id)
+
         # 2. stage_started event.
         started_at = datetime.now(timezone.utc)
         await write_event(
@@ -192,6 +194,8 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
             "not_found",
             f"transcript object missing for chunk {chunk_id}: {exc}",
         ) from exc
+
+    log.info("P5 transcript_loaded chunk=%s bytes=%d", chunk_id, len(raw))
 
     if not raw:
         await _emit_stage_failed(
@@ -223,6 +227,8 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
         )
         raise DomainError("invalid_state", "transcript has zero words")
 
+    log.info("P5 transcript_parsed chunk=%s words=%d duration=%.2f", chunk_id, len(transcript.transcript), transcript.duration_s or 0.0)
+
     # 4. Compose SRT (pure). Prefer the duration carried on the take
     #    because that is what the user's audio actually sounds like; the
     #    transcript's ``duration_s`` is informational only.
@@ -240,6 +246,9 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
         transcript_words=words_raw or None,
         chunk_start=chunk_start,
     )
+    log.info("P5 composed chunk=%s lines=%d srt_bytes=%d", chunk_id, line_count, len(srt_doc.encode('utf-8')))
+    for i, cue in enumerate(subtitle_cues):
+        log.info("P5 cue[%d] chunk=%s start=%.2f end=%.2f text=%r", i, chunk_id, cue["start"], cue["end"], cue["text"][:80])
     if line_count == 0:
         # All-control-marker / empty text after stripping.
         await _emit_stage_failed(
@@ -270,6 +279,8 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
         )
         raise
 
+    log.info("P5 uploaded chunk=%s uri=%s", chunk_id, subtitle_uri)
+
     # 6. Persist state + cue metadata + stage_finished event.
     #
     #    Cues are written to ``chunks.metadata["subtitle_cues"]`` so the
@@ -280,6 +291,7 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
     async with _session_scope(session_factory) as session:
         chunk_repo = ChunkRepo(session)
         await chunk_repo.set_subtitle_cues(chunk_id, subtitle_cues)
+        log.info("P5 cues_persisted chunk=%s count=%d", chunk_id, len(subtitle_cues))
         # chunk.status stays "verified" — fine-grained progress via stage_runs
         await write_event(
             session,
@@ -294,6 +306,8 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
             },
         )
         await session.commit()
+
+    log.info("P5 done chunk=%s lines=%d", chunk_id, line_count)
 
     return P5Result(
         chunk_id=chunk_id,

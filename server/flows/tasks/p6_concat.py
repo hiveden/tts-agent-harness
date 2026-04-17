@@ -152,6 +152,13 @@ async def run_p6_concat(
     padding_s = padding_ms / 1000.0
     shot_gap_s = shot_gap_ms / 1000.0
 
+    log.info(
+        "P6 start episode=%s padding_ms=%d shot_gap_ms=%d",
+        episode_id,
+        padding_ms,
+        shot_gap_ms,
+    )
+
     ep_repo = EpisodeRepo(session)
     chunk_repo = ChunkRepo(session)
     take_repo = TakeRepo(session)
@@ -246,6 +253,13 @@ async def run_p6_concat(
     gaps = compute_gap_sequence(timings, padding_s, shot_gap_s)
     total_duration = compute_total_duration(timings, padding_s, shot_gap_s)
 
+    log.info(
+        "P6 timings_ready episode=%s chunks=%d total_duration=%.2f",
+        episode_id,
+        len(timings),
+        total_duration,
+    )
+
     cleanup_tmp = workdir is None
     work_root = Path(workdir or tempfile.mkdtemp(prefix=f"p6-{episode_id}-"))
     work_root.mkdir(parents=True, exist_ok=True)
@@ -300,6 +314,14 @@ async def run_p6_concat(
         # Upload finals (overwrite on re-run — MinIO put_object replaces).
         wav_uri = await storage.upload_file(final_wav_key(episode_id), wav_out)
         srt_uri = await storage.upload_file(final_srt_key(episode_id), srt_out)
+
+        log.info(
+            "P6 uploaded episode=%s wav=%s srt=%s total_duration=%.2f",
+            episode_id,
+            wav_uri,
+            srt_uri,
+            total_duration,
+        )
     except Exception as exc:
         await _emit_stage_failed(_sf, episode_id=episode_id, error=str(exc))
         raise
@@ -342,6 +364,13 @@ async def run_p6_concat(
     )
     await ep_repo.set_status(episode_id, "done")
     await session.commit()
+
+    log.info(
+        "P6 done episode=%s chunks=%d total_duration=%.2f",
+        episode_id,
+        len(timings),
+        total_duration,
+    )
 
     return result
 

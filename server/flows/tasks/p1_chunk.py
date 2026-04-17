@@ -46,6 +46,8 @@ from server.core.domain import DomainError
 from server.core.repositories import ChunkRepo, EpisodeRepo
 from server.core.storage import MinIOStorage, episode_script_key
 
+log = logging.getLogger(__name__)
+
 
 @dataclass(frozen=True)
 class P1Context:
@@ -110,6 +112,7 @@ async def _run_p1(
     *,
     max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
 ) -> P1Result:
+    log.info("P1 start episode=%s max_chunk_chars=%d", episode_id, max_chunk_chars)
     try:
         script = await _load_script(ctx.storage, episode_id)
     except Exception as exc:
@@ -118,6 +121,12 @@ async def _run_p1(
         )
         raise
 
+    log.info(
+        "P1 script_loaded episode=%s segments=%d",
+        episode_id,
+        len(script.get("segments", [])) if isinstance(script, dict) else 0,
+    )
+
     try:
         chunks = script_to_chunks(script, episode_id, max_chunk_chars=max_chunk_chars)
     except ValueError as exc:
@@ -125,6 +134,8 @@ async def _run_p1(
             ctx.session_maker, episode_id=episode_id, error=str(exc)
         )
         raise DomainError("invalid_input", str(exc)) from exc
+
+    log.info("P1 chunked episode=%s chunks=%d", episode_id, len(chunks))
 
     async with ctx.session_maker() as session:
         try:
@@ -152,6 +163,7 @@ async def _run_p1(
                 await session.execute(delete(Chunk).where(Chunk.episode_id == episode_id))
 
                 inserted = await chunk_repo.bulk_insert(chunks)
+                log.info("P1 inserted episode=%s count=%d", episode_id, inserted)
 
                 # NB: p1_chunk does not manage episode-level status. Doing so
                 # was the root cause of a nasty bug — when this task ran as
@@ -176,6 +188,7 @@ async def _run_p1(
             )
             raise
 
+    log.info("P1 done episode=%s chunks=%d", episode_id, len(chunks))
     return P1Result(episode_id=episode_id, chunks=chunks)
 
 

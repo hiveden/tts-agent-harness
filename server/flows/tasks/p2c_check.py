@@ -192,6 +192,8 @@ async def run_p2c_check(chunk_id: str) -> dict[str, Any]:
         # Strip s3://bucket/ prefix to get the MinIO object key
         audio_key = audio_uri.split("//", 1)[-1].split("/", 1)[-1] if audio_uri.startswith("s3://") else audio_uri
 
+        log.info("P2c start chunk=%s take=%s char_count=%d", chunk_id, take_id, char_count)
+
         # stage_started
         started_at = datetime.now(timezone.utc)
         await write_event(
@@ -227,6 +229,13 @@ async def run_p2c_check(chunk_id: str) -> dict[str, Any]:
 
         try:
             info = await _ffprobe_info(tmp_path)
+            log.info(
+                "P2c probe chunk=%s sample_rate=%s channels=%s duration=%s",
+                chunk_id,
+                info.get("sample_rate"),
+                info.get("channels"),
+                info.get("duration"),
+            )
             errs, warns = validate_wav(info, char_count)
             errors.extend(errs)
             warnings.extend(warns)
@@ -266,6 +275,20 @@ async def run_p2c_check(chunk_id: str) -> dict[str, Any]:
             error="; ".join(errors) if errors else None,
         )
         await session.commit()
+
+    if status == "ok":
+        log.info(
+            "P2c pass chunk=%s duration_ms=%d warnings=%d",
+            chunk_id,
+            duration_ms,
+            len(warnings),
+        )
+    else:
+        log.info(
+            "P2c fail chunk=%s reason=%s",
+            chunk_id,
+            "; ".join(errors),
+        )
 
     return {
         "chunk_id": chunk_id,

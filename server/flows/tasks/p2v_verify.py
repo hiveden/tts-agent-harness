@@ -220,6 +220,8 @@ async def run_p2v_verify(
         chunk_text_raw = chunk.text or ""
         original_text = strip_control_markers(chunk_text_raw)
 
+        log.info("P2v start chunk=%s take=%s language=%s", chunk_id, take.id, language)
+
         # 2. verify_started event.
         started_at = datetime.now(timezone.utc)
         await write_event(
@@ -253,11 +255,14 @@ async def run_p2v_verify(
         await _emit_stage_failed(session_factory, episode_id=episode_id, chunk_id=chunk_id, error=_err)
         raise DomainError("invalid_state", f"take WAV is empty for chunk {chunk_id}")
 
+    log.info("P2v wav_loaded chunk=%s bytes=%d", chunk_id, len(wav_bytes))
+
     # 4. ASR transcription: Groq Whisper (if configured) or local WhisperX.
     groq_key = _groq_api_key or os.environ.get("GROQ_API_KEY", "")
     whisperx_url = _whisperx_url or os.environ.get("WHISPERX_URL", "")
-    log.info("P2v ASR config: groq_key=%s whisperx_url=%s", bool(groq_key), whisperx_url)
+    log.info("P2v asr_config chunk=%s groq=%s whisperx=%s", chunk_id, bool(groq_key), bool(whisperx_url))
 
+    _asr_t0 = datetime.now(timezone.utc)
     if groq_key:
         # Use Groq Whisper API.
         from server.core.groq_asr_client import GroqASRClient
@@ -270,6 +275,7 @@ async def run_p2v_verify(
             await _emit_verify_failed(session_factory, episode_id=episode_id, chunk_id=chunk_id, error=_err)
             await _emit_stage_failed(session_factory, episode_id=episode_id, chunk_id=chunk_id, error=_err)
             raise
+        log.info("P2v asr_done chunk=%s engine=%s call_ms=%d words=%d", chunk_id, "groq", int((datetime.now(timezone.utc) - _asr_t0).total_seconds() * 1000), len(transcript_data.get("transcript", [])))
     elif whisperx_url:
         # Use local WhisperX service.
         client = _get_http_client()
@@ -282,6 +288,7 @@ async def run_p2v_verify(
             raise
         finally:
             await client.aclose()
+        log.info("P2v asr_done chunk=%s engine=%s call_ms=%d words=%d", chunk_id, "whisperx", int((datetime.now(timezone.utc) - _asr_t0).total_seconds() * 1000), len(transcript_data.get("transcript", [])))
     else:
         _err = "ASR 未配置: 需要 Groq API Key 或 WhisperX URL"
         await _emit_verify_failed(session_factory, episode_id=episode_id, chunk_id=chunk_id, error=_err)
@@ -314,6 +321,8 @@ async def run_p2v_verify(
         await _emit_stage_failed(session_factory, episode_id=episode_id, chunk_id=chunk_id, error=_err)
         raise
 
+    log.info("P2v transcript_uploaded chunk=%s uri=%s bytes=%d", chunk_id, transcript_uri, len(transcript_json))
+
     # 6. Quality gate: 2-dimensional scoring via p2v_scoring.evaluate().
     transcribed_text = _extract_transcribed_text(transcript_data)
     words_raw = transcript_data.get("transcript", [])
@@ -330,6 +339,8 @@ async def run_p2v_verify(
     )
 
     verdict = diagnosis.verdict  # "pass" or "fail"
+
+    log.info("P2v scored chunk=%s weighted=%.3f char_ratio=%.3f duration_ratio=%.3f silence=%.3f verdict=%s", chunk_id, scores.weighted_score, scores.char_ratio, scores.duration_ratio, scores.silence, diagnosis.verdict)
 
     if verdict == "pass":
         # PASS — verified.
@@ -351,6 +362,8 @@ async def run_p2v_verify(
                 },
             )
             await session.commit()
+
+        log.info("P2v pass chunk=%s status_transition=synth_done->verified", chunk_id)
 
         return P2vResult(
             chunk_id=chunk_id,
@@ -379,6 +392,8 @@ async def run_p2v_verify(
                 },
             )
             await session.commit()
+
+        log.info("P2v fail chunk=%s reason=%s", chunk_id, diagnosis.type or "unknown")
 
         return P2vResult(
             chunk_id=chunk_id,
