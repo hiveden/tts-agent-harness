@@ -54,7 +54,7 @@ interface HarnessState {
   dirtyCount: () => { tts: number; sub: number };
 
   // --- Async actions (call API → update state) ---
-  runEpisode: (mode: string, chunkIds?: string[]) => Promise<void>;
+  runEpisode: (mode: string, chunkIds?: string[], maxChunkChars?: number) => Promise<void>;
   applyEdits: (episodeId: string) => Promise<void>;
   retryChunk: (epId: string, cid: string, stage: StageName, cascade: boolean) => Promise<void>;
   createEpisode: (id: string, file: File) => Promise<void>;
@@ -157,10 +157,10 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
   },
 
   // --- Async actions ---
-  runEpisode: async (mode, chunkIds) => {
+  runEpisode: async (mode, chunkIds, maxChunkChars) => {
     const id = get().selectedId;
     if (!id) return;
-    await api.runEpisode(id, mode, chunkIds);
+    await api.runEpisode(id, mode, chunkIds, maxChunkChars);
   },
 
   applyEdits: async (episodeId) => {

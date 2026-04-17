@@ -144,10 +144,13 @@ export async function runEpisode(
   id: string,
   mode: string = "synthesize",
   chunkIds?: string[],
+  maxChunkChars?: number,
 ): Promise<string> {
+  const body: Record<string, unknown> = { mode, chunkIds: chunkIds ?? null };
+  if (maxChunkChars !== undefined) body.maxChunkChars = maxChunkChars;
   const { data, error } = await api.POST("/episodes/{episode_id}/run", {
     params: { path: { episode_id: id } },
-    body: { mode, chunkIds: chunkIds ?? null } as never,
+    body: body as never,
   });
   if (error) throw apiError(error);
   return data!.flowRunId;

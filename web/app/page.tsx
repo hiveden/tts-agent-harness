@@ -67,8 +67,8 @@ export default function Page() {
 
   // --- Action hooks (unified loading / error toast / dedup) ---
   const [execRun, runPending] = useAction(
-    useCallback(async (mode: string) => {
-      await store.runEpisode(mode);
+    useCallback(async (mode: string, maxChunkChars?: number) => {
+      await store.runEpisode(mode, undefined, maxChunkChars);
       await mutateDetail();
       await mutateList();
     }, [store, mutateDetail, mutateList]),

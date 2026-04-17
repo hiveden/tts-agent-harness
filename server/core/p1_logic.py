@@ -110,8 +110,59 @@ def _normalise_shot_id(raw: Any) -> str:
     raise ValueError(f"segment id must be int or str, got {type(raw).__name__}")
 
 
-def script_to_chunks(script: dict, episode_id: str) -> list[ChunkInput]:
+def _group_sentences(
+    sentences: list[str],
+    max_chars: int,
+) -> list[str]:
+    """Greedily merge consecutive sentences until *max_chars* would be exceeded.
+
+    * A single sentence longer than *max_chars* is never split — it becomes
+      its own group.
+    * ``max_chars <= 0`` disables grouping (each sentence = one group, i.e.
+      the legacy per-sentence behaviour).
+    """
+    if max_chars <= 0:
+        return list(sentences)
+
+    groups: list[str] = []
+    buf: list[str] = []
+    buf_len = 0
+
+    for sent in sentences:
+        sent_len = len(sent.strip())
+        if buf and buf_len + sent_len > max_chars:
+            # Flush current group.
+            groups.append("".join(buf))
+            buf = []
+            buf_len = 0
+        buf.append(sent)
+        buf_len += sent_len
+
+    if buf:
+        groups.append("".join(buf))
+
+    return groups
+
+
+# Default grouping limit (characters).  Overridable per-call.
+DEFAULT_MAX_CHUNK_CHARS = 200
+
+
+def script_to_chunks(
+    script: dict,
+    episode_id: str,
+    *,
+    max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
+) -> list[ChunkInput]:
     """Turn a parsed ``script.json`` into an ordered list of chunks.
+
+    ``max_chunk_chars`` controls how sentences within a shot are grouped:
+
+    * ``> 0`` — adjacent sentences are greedily merged until adding the
+      next sentence would exceed the limit.  A single sentence longer than
+      the limit is never split.
+    * ``0``   — disable grouping; every sentence is its own chunk (legacy
+      per-sentence behaviour).
 
     Any segment missing ``text`` is silently skipped (no text -> no chunk),
     so that authoring tools can leave placeholder rows during drafting.
@@ -135,26 +186,27 @@ def script_to_chunks(script: dict, episode_id: str) -> list[ChunkInput]:
             )
 
         sentences = split_segment_into_sentences(raw_text)
-        for sentence_idx, sentence in enumerate(sentences, start=1):
-            text_normalized = sentence.strip()
+        # Drop whitespace-only fragments before grouping.
+        sentences = [s for s in sentences if s.strip()]
+        groups = _group_sentences(sentences, max_chunk_chars)
+
+        for group_idx, group_text in enumerate(groups, start=1):
+            text_normalized = group_text.strip()
             if not text_normalized:
-                # split_segment_into_sentences already drops whitespace-only
-                # fragments, but we double-check after .strip() in case of
-                # pathological inputs like "   。   ".
                 continue
-            chunk_id = f"{episode_id}:{shot_id}:{sentence_idx}"
+            chunk_id = f"{episode_id}:{shot_id}:{group_idx}"
             chunks.append(
                 ChunkInput(
                     id=chunk_id,
                     episode_id=episode_id,
                     shot_id=shot_id,
-                    idx=sentence_idx,
-                    text=sentence,
+                    idx=group_idx,
+                    text=group_text,
                     text_normalized=text_normalized,
                     subtitle_text=None,
                     char_count=len(text_normalized),
                     boundary_hash=compute_boundary_hash(
-                        shot_id, sentence_idx, sentence
+                        shot_id, group_idx, group_text
                     ),
                     metadata={"segment_type": segment.get("type")}
                     if segment.get("type")
@@ -169,4 +221,5 @@ __all__ = [
     "split_segment_into_sentences",
     "compute_boundary_hash",
     "script_to_chunks",
+    "DEFAULT_MAX_CHUNK_CHARS",
 ]

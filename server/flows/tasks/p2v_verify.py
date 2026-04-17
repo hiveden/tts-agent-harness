@@ -256,6 +256,7 @@ async def run_p2v_verify(
     # 4. ASR transcription: Groq Whisper (if configured) or local WhisperX.
     groq_key = _groq_api_key or os.environ.get("GROQ_API_KEY", "")
     whisperx_url = _whisperx_url or os.environ.get("WHISPERX_URL", "")
+    log.info("P2v ASR config: groq_key=%s whisperx_url=%s", bool(groq_key), whisperx_url)
 
     if groq_key:
         # Use Groq Whisper API.

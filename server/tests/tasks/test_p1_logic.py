@@ -130,7 +130,8 @@ def test_script_splits_segment_into_multiple_chunks() -> None:
             }
         ]
     }
-    chunks = script_to_chunks(script, "ep")
+    # max_chunk_chars=0 disables grouping → legacy per-sentence behaviour
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=0)
     assert len(chunks) == 3
     assert [c.idx for c in chunks] == [1, 2, 3]
     assert [c.id for c in chunks] == [
@@ -163,7 +164,7 @@ def test_script_long_paragraph_splits_into_ordered_chunks() -> None:
         "开场白五。开场白六。"
     )
     script = {"segments": [{"id": 1, "text": paragraph}]}
-    chunks = script_to_chunks(script, "ep")
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=0)
     assert len(chunks) == 6
     assert [c.idx for c in chunks] == [1, 2, 3, 4, 5, 6]
     # Each chunk inside a shot gets a monotonically increasing idx and all
@@ -177,7 +178,7 @@ def test_script_preserves_control_markers_in_text_but_not_as_splits() -> None:
             {"id": 1, "text": "开场[break]白。[breath]正文[long break]结束！"}
         ]
     }
-    chunks = script_to_chunks(script, "ep")
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=0)
     assert len(chunks) == 2
     assert chunks[0].text == "开场[break]白。"
     assert chunks[1].text == "[breath]正文[long break]结束！"
@@ -199,8 +200,8 @@ def test_script_boundary_hash_is_deterministic_and_unique() -> None:
             {"id": 2, "text": "你好。"},
         ]
     }
-    a = script_to_chunks(script, "ep-abc")
-    b = script_to_chunks(script, "ep-abc")
+    a = script_to_chunks(script, "ep-abc", max_chunk_chars=0)
+    b = script_to_chunks(script, "ep-abc", max_chunk_chars=0)
     # Deterministic: two calls return byte-identical hashes.
     assert [c.boundary_hash for c in a] == [c.boundary_hash for c in b]
     # Unique per (shot, idx, text) tuple within the episode.
@@ -215,7 +216,7 @@ def test_script_mixed_punctuation_chunk_fields() -> None:
             {"id": 1, "type": "hook", "text": "Hello 世界! Is this OK? 好的。"}
         ]
     }
-    chunks = script_to_chunks(script, "ep")
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=0)
     assert len(chunks) == 3
     # char_count uses len(text_normalized) — i.e. unicode code points, not
     # bytes, which is the right thing for a Chinese-first product.
@@ -223,6 +224,80 @@ def test_script_mixed_punctuation_chunk_fields() -> None:
     # Metadata carries segment type so downstream (optional) consumers can
     # treat hook vs content differently without re-parsing the script.
     assert chunks[0].metadata == {"segment_type": "hook"}
+
+
+# ---------------------------------------------------------------------------
+# Sentence grouping (max_chunk_chars)
+# ---------------------------------------------------------------------------
+
+
+def test_grouping_merges_short_sentences() -> None:
+    """Adjacent sentences under max_chunk_chars are merged into one chunk."""
+    script = {
+        "segments": [{"id": 1, "text": "第一句。第二句！第三句？"}]
+    }
+    # Total text is 12 chars — fits in one group with limit=200
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=200)
+    assert len(chunks) == 1
+    assert chunks[0].text == "第一句。第二句！第三句？"
+    assert chunks[0].idx == 1
+
+
+def test_grouping_splits_at_limit() -> None:
+    """When adding next sentence exceeds limit, start a new group."""
+    script = {
+        "segments": [{"id": 1, "text": "第一句。第二句！第三句？"}]
+    }
+    # Each sentence is 4 chars. Limit=8 allows 2 per group.
+    # Group 1: "第一句。"(4) + "第二句！"(4) = 8 ≤ 8 → merge
+    # Group 2: "第三句？"(4) alone
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=8)
+    assert len(chunks) == 2
+    assert chunks[0].text == "第一句。第二句！"
+    assert chunks[1].text == "第三句？"
+
+
+def test_grouping_single_long_sentence_never_split() -> None:
+    """A sentence exceeding max_chunk_chars is kept whole."""
+    script = {
+        "segments": [{"id": 1, "text": "这是一个超长的句子不会被切割。短句。"}]
+    }
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=5)
+    assert len(chunks) == 2
+    assert chunks[0].text == "这是一个超长的句子不会被切割。"
+    assert chunks[1].text == "短句。"
+
+
+def test_grouping_zero_disables() -> None:
+    """max_chunk_chars=0 gives legacy per-sentence behavior."""
+    script = {
+        "segments": [{"id": 1, "text": "一。二。三。"}]
+    }
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=0)
+    assert len(chunks) == 3
+
+
+def test_grouping_default_merges_typical_script() -> None:
+    """Default 200-char limit merges a typical shot into 1-2 chunks."""
+    # Simulate a shot with ~100 chars total
+    text = "这是第一句话。" * 5 + "结尾。"  # ~43 chars
+    script = {"segments": [{"id": 1, "text": text}]}
+    chunks = script_to_chunks(script, "ep")  # default max_chunk_chars=200
+    assert len(chunks) == 1
+
+
+def test_grouping_respects_shot_boundary() -> None:
+    """Groups never cross shot boundaries."""
+    script = {
+        "segments": [
+            {"id": 1, "text": "A句。B句。"},
+            {"id": 2, "text": "C句。D句。"},
+        ]
+    }
+    chunks = script_to_chunks(script, "ep", max_chunk_chars=9999)
+    assert len(chunks) == 2
+    assert chunks[0].shot_id == "shot01"
+    assert chunks[1].shot_id == "shot02"
 
 
 def test_script_rejects_unknown_id_type() -> None:

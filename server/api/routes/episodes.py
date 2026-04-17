@@ -121,6 +121,7 @@ class RunRequest(_CamelBase):
 
     mode: str = "synthesize"  # "chunk_only" | "synthesize" | "retry_failed" | "regenerate"
     chunk_ids: list[str] | None = None  # for multi-select; None = all
+    max_chunk_chars: int | None = None  # P1 grouping limit; None = use default (200)
 
 
 # ---------------------------------------------------------------------------
@@ -546,9 +547,11 @@ async def run_episode(
                 if mode == "chunk_only":
                     from server.flows.worker_bootstrap import get_p1_context
                     from server.flows.tasks.p1_chunk import p1_chunk
+                    from server.core.p1_logic import DEFAULT_MAX_CHUNK_CHARS
                     ctx = get_p1_context()
-                    result = await p1_chunk.fn(episode_id, ctx=ctx)
-                    _log.info("P1 done: %d chunks", len(result.chunks))
+                    _max_chars = (body.max_chunk_chars if body and body.max_chunk_chars is not None else DEFAULT_MAX_CHUNK_CHARS)
+                    result = await p1_chunk.fn(episode_id, ctx=ctx, max_chunk_chars=_max_chars)
+                    _log.info("P1 done: %d chunks (max_chunk_chars=%d)", len(result.chunks), _max_chars)
                     return
 
                 # synthesize / retry_failed / regenerate
@@ -612,6 +615,10 @@ async def run_episode(
                         if chunk_obj and chunk_obj.status == "verified":
                             _log.info("P2 skip %s (verified)", cid)
                             await _mark_stage(cid, "p2", "ok", context={"skipped": True, "reason": "already verified"})
+                            continue
+                        if chunk_obj and chunk_obj.selected_take_id and chunk_obj.status == "synth_done":
+                            _log.info("P2 skip %s (synth_done, has take)", cid)
+                            await _mark_stage(cid, "p2", "ok", context={"skipped": True, "reason": "already synth_done"})
                             continue
                     async with _session_factory() as _s:
                         _chunk = await ChunkRepo(_s).get(cid)

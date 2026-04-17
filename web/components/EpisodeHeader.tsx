@@ -13,7 +13,7 @@ interface Props {
   episode: Episode;
   running: boolean;
   runPending?: boolean;
-  onRun: (mode: string) => void;
+  onRun: (mode: string, maxChunkChars?: number) => void;
   onCancel?: () => void;
   cancelPending?: boolean;
   onViewScript?: () => void;
@@ -36,6 +36,7 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
   const [confirmOpen, setConfirmOpen] = useState(false);
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
+  const [maxChunkChars, setMaxChunkChars] = useState(200);
 
   const handleScriptDownload = useCallback(async () => {
     try {
@@ -152,7 +153,7 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
         ) : (
           <button
             type="button"
-            onClick={() => onRun(primaryButton.mode)}
+            onClick={() => onRun(primaryButton.mode, primaryButton.mode === "chunk_only" ? maxChunkChars : undefined)}
             disabled={primaryButton.disabled}
             className={`px-3 py-1.5 text-sm rounded ${
               primaryButton.disabled
@@ -162,6 +163,22 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
           >
             {primaryButton.label}
           </button>
+        )}
+
+        {/* Chunk grouping config — visible before chunking or before synthesis */}
+        {(episode.status === "empty" || episode.status === "ready") && !running && (
+          <label className="inline-flex items-center gap-1.5 text-[11px] text-neutral-500 dark:text-neutral-400">
+            <span className="whitespace-nowrap">分组上限</span>
+            <input
+              type="number"
+              min={0}
+              step={50}
+              value={maxChunkChars}
+              onChange={(e) => setMaxChunkChars(Math.max(0, parseInt(e.target.value, 10) || 0))}
+              className="w-16 px-1.5 py-1 text-xs font-mono border border-neutral-300 dark:border-neutral-600 rounded bg-white dark:bg-neutral-800 dark:text-neutral-100 focus:outline-none focus:ring-1 focus:ring-blue-400"
+            />
+            <span className="whitespace-nowrap text-neutral-400 dark:text-neutral-500">字</span>
+          </label>
         )}
 
         {/* Menu for secondary actions */}

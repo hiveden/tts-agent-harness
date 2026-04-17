@@ -41,7 +41,7 @@ from sqlalchemy.ext.asyncio import AsyncSession, async_sessionmaker
 from server.core.domain import P1Result
 from server.core.events import write_event
 from server.core.models import Chunk
-from server.core.p1_logic import script_to_chunks
+from server.core.p1_logic import script_to_chunks, DEFAULT_MAX_CHUNK_CHARS
 from server.core.domain import DomainError
 from server.core.repositories import ChunkRepo, EpisodeRepo
 from server.core.storage import MinIOStorage, episode_script_key
@@ -104,7 +104,12 @@ async def _emit_stage_failed(
         )
 
 
-async def _run_p1(ctx: P1Context, episode_id: str) -> P1Result:
+async def _run_p1(
+    ctx: P1Context,
+    episode_id: str,
+    *,
+    max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
+) -> P1Result:
     try:
         script = await _load_script(ctx.storage, episode_id)
     except Exception as exc:
@@ -114,7 +119,7 @@ async def _run_p1(ctx: P1Context, episode_id: str) -> P1Result:
         raise
 
     try:
-        chunks = script_to_chunks(script, episode_id)
+        chunks = script_to_chunks(script, episode_id, max_chunk_chars=max_chunk_chars)
     except ValueError as exc:
         await _emit_stage_failed(
             ctx.session_maker, episode_id=episode_id, error=str(exc)
@@ -167,7 +172,12 @@ async def _run_p1(ctx: P1Context, episode_id: str) -> P1Result:
 
 
 @task(name="p1-chunk")
-async def p1_chunk(episode_id: str, *, ctx: P1Context) -> P1Result:
+async def p1_chunk(
+    episode_id: str,
+    *,
+    ctx: P1Context,
+    max_chunk_chars: int = DEFAULT_MAX_CHUNK_CHARS,
+) -> P1Result:
     """Prefect task: run P1 segmentation for ``episode_id``.
 
     The task takes its runtime dependencies via an explicit ``ctx`` keyword
@@ -183,8 +193,8 @@ async def p1_chunk(episode_id: str, *, ctx: P1Context) -> P1Result:
         # invocation via ``p1_chunk.fn``). Fall back to stdlib logging so
         # the adapter stays fully usable in tests.
         logger = logging.getLogger("server.flows.tasks.p1_chunk")
-    logger.info("P1 starting", extra={"episode_id": episode_id})
-    result = await _run_p1(ctx, episode_id)
+    logger.info("P1 starting (max_chunk_chars=%d)", max_chunk_chars, extra={"episode_id": episode_id})
+    result = await _run_p1(ctx, episode_id, max_chunk_chars=max_chunk_chars)
     logger.info(
         "P1 finished",
         extra={"episode_id": episode_id, "chunk_count": len(result.chunks)},
