@@ -1,0 +1,124 @@
+{
+  "meta": {
+    "title": "TTS Agent Harness — 功能演示",
+    "target_duration": "~120s",
+    "resolution": "1280x800",
+    "script_file": "smoke-test-script.json"
+  },
+  "scenes": [
+    {
+      "id": "S01",
+      "action": "open_home",
+      "caption": "打开 TTS Harness 首页",
+      "steps": ["navigate to home page", "wait 1s for page load"],
+      "duration_hint": "3s"
+    },
+    {
+      "id": "S02",
+      "action": "configure_keys",
+      "caption": "配置 API Keys（Fish Audio + Groq）",
+      "steps": [
+        "click key icon in header",
+        "paste Fish API key → click save → wait for '已配置 ✓'",
+        "paste Groq API key → click save → wait for '已配置 ✓'",
+        "close dialog"
+      ],
+      "duration_hint": "12s"
+    },
+    {
+      "id": "S03",
+      "action": "create_episode",
+      "caption": "上传脚本，创建 Episode",
+      "steps": [
+        "click '+' button in sidebar",
+        "enter episode id: demo-recording",
+        "upload smoke-test-script.json",
+        "click create → wait for episode to appear"
+      ],
+      "duration_hint": "8s"
+    },
+    {
+      "id": "S04",
+      "action": "chunk_split",
+      "caption": "P1 切分 — 脚本自动拆分为 chunks",
+      "steps": [
+        "click '切分' button",
+        "wait for chunks to appear in table"
+      ],
+      "duration_hint": "5s"
+    },
+    {
+      "id": "S05",
+      "action": "synthesize_all",
+      "caption": "合成全部 — Fish Audio TTS + ASR 验证",
+      "steps": [
+        "click '合成全部' → confirm",
+        "observe stage pills changing (P2 → P2c → P2v)",
+        "wait for all chunks to reach verified status"
+      ],
+      "duration_hint": "40s"
+    },
+    {
+      "id": "S06",
+      "action": "play_and_seek",
+      "caption": "播放试听 — 点击字幕文字跳转播放",
+      "steps": [
+        "click play button on chunk 1 → listen 2s",
+        "click a character in chunk 3 subtitle → seek and play",
+        "click play again to stop"
+      ],
+      "duration_hint": "10s"
+    },
+    {
+      "id": "S07",
+      "action": "edit_chunk",
+      "caption": "编辑 chunk 文本，重新合成",
+      "steps": [
+        "click edit button on chunk 5",
+        "modify text_normalized (e.g. change 'USB-C' to 'USB type C')",
+        "click Stage Change",
+        "click Apply All in banner",
+        "wait for re-synthesis to complete"
+      ],
+      "duration_hint": "20s"
+    },
+    {
+      "id": "S08",
+      "action": "view_verify_scores",
+      "caption": "查看发音质量评分",
+      "steps": [
+        "click verify score bar on a chunk to expand",
+        "show detailed scores"
+      ],
+      "duration_hint": "5s"
+    },
+    {
+      "id": "S09",
+      "action": "export",
+      "caption": "导出产物 — WAV + 字幕 + 时间戳",
+      "steps": [
+        "click '⋯' menu → '导出产物 (.zip)'",
+        "wait for download"
+      ],
+      "duration_hint": "5s"
+    },
+    {
+      "id": "S10",
+      "action": "theme_toggle",
+      "caption": "深色/浅色主题切换",
+      "steps": [
+        "click theme toggle in header",
+        "show dark mode",
+        "click again to switch back"
+      ],
+      "duration_hint": "4s"
+    },
+    {
+      "id": "S11",
+      "action": "end",
+      "caption": "演示完成",
+      "steps": ["pause 2s on final state"],
+      "duration_hint": "2s"
+    }
+  ]
+}

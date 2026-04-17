@@ -1,0 +1,12 @@
+{
+  "title": "线上冒烟测试",
+  "segments": [
+    { "id": 1, "type": "hook", "text": "OpenAI 刚刚发布了 GPT-V 模型，号称在多模态推理上超越了所有竞品。" },
+    { "id": 2, "type": "content", "text": "第Ⅱ章，我们先来回顾 transformer 架构的演进。[break] 从最初的 BERT 到如今的 LLM，核心思路始终是 attention mechanism。" },
+    { "id": 3, "type": "content", "text": "AWS 和 GCP 的云端推理服务各有优劣。[break] 比如 latency 这个指标，在实际部署中往往比 throughput 更关键。" },
+    { "id": 4, "type": "content", "text": "到了第Ⅲ阶段，fine-tuning 的成本已经大幅下降。[long break] 不过 RLHF 这项技术的落地，仍然面临 annotation 质量不稳定的问题。" },
+    { "id": 5, "type": "content", "text": "值得一提的是 Fish Audio 的 S2-Pro 引擎。它在中文 prosody 处理上表现出色，[break] 但遇到 USB-C 或 iOS 这类缩写时偶尔会翻车。" },
+    { "id": 6, "type": "content", "text": "附录Ⅳ列出了完整的 benchmark 数据。其中 NVIDIA 的 A100 和 H100 在 batch inference 场景下差距明显。" },
+    { "id": 7, "type": "outro", "text": "以上就是本期关于 AI 基础设施的全部内容。[break] 我是你的 host，我们下期再见。" }
+  ]
+}
