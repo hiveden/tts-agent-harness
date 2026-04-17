@@ -1,94 +1,131 @@
-# P5 字幕对齐优化：字符级贪心消费
+# P5 字幕对齐：字符级锚定 + 插值
 
-## 问题描述
+## 问题
 
-### 现状
+P5 要给每行字幕打上时间戳 `(start, end)`，依赖 P2v 给出的 ASR word 列表 `[{word, start, end}]`。ASR 的时间戳是精确的（来自 WhisperX + wav2vec2 对齐），但**文字可能错**——中英混合、长英文词、繁简、弱读字的漏听都会让 ASR 输出和原文字符不一致。
 
-P5 字幕对齐使用 `distribute_timestamps_with_words`，算法是**按字符数比例分配 word 给行**：
+实际数据（FLASH01-v2 14 个 chunk 实测）：
+- 平均字符相似度 **95.8%**（简繁归一化后）
+- 最低 83.5%（生僻专有名词 `cargo-mutants`、`WuppieFuzz` 等）
+- ASR 典型错法：`ThoughtWorks → Falseworks`、`OpenClaw → Open Cloud`、`资讯 → 咨询`、"的"字丢失、简体输入→繁体输出
+
+## 算法演进
+
+### v1（历史）：按字符数比例分配
 
 ```
 每行分到的 word 数 = round(该行字符权重 / 总字符权重 × 总 word 数)
 ```
 
-### 为什么偏慢
+假设：原文字符数 ≈ ASR 字符数。中英混合时破产：`OpenClaw`（8 字符）对应 ASR 只有 `Open`+`Cloud`（2 word），按字符比例强行分配过多 word 到前面行，后续时间窗口系统性后移。
 
-用 CORE03-v3:shot01:1 实际数据说明：
+### v2（已废弃）：贪心消费 + gap-aware 早停
 
-| 字幕行 | 显示文本 | 去标点字符数 | 比例分配 word 数 |
-|--------|---------|------------|----------------|
-| 1 | 我用 OpenClaw | 10 | round(10/88 × 76) = **9** |
-| 2 | 做了一个资讯推送。 | 8 | round(8/88 × 76) = 7 |
+v1 的改进——逐行消费 word 字符到达行目标字符数即停，加上"句末标点 + 0.3s gap"的早停规则挽救 ASR 漏字场景。
 
-行 1 按比例拿到 9 个 word（我/用/Open/Cloud/**做/了/一个/咨/询**），时间窗口延伸到 1.72s。但实际 "OpenClaw" 在 0.84s 就说完了——**后面 5 个 word 本属于行 2，被行 1 吃掉了**。
+问题：
+- 引入硬编码 `_SENTENCE_END_RE`、`_SENTENCE_BOUNDARY_GAP_S = 0.3`
+- 只在"行末是句末标点"时救场，其它场景（如 `ThoughtWorks` 行不带标点）防线不开
+- 字符守恒假设仍是地基，ASR 一错就塌
+- **方向错误：在错的范式上打补丁**
 
-根本原因：**"OpenClaw" 有 8 个显示字符但只占 2 个 transcript word**。比例分配按字符数给行 1 分了过多 word，导致所有后续行的时间窗口系统性后移。
+v2 被完整回退，教训见 commit ed04cef。
 
-### 影响范围
+### v3（当前）：字符级锚定 + 插值
 
-中英混合文本、控制标记密集的文本都会触发此问题。CORE03 全篇中英混合，每个 chunk 都受影响。
-
-## 方案设计：字符级贪心消费
-
-### 核心思路
-
-不按比例分配，而是**逐行消费 transcript word 的字符**，当已消费的 word 字符数 >= 当前行的显示字符数时，该行结束，转下一行。
-
-### 算法
+单一规则：**匹配就锚定，不匹配就插值**。
 
 ```
-输入：lines（字幕行列表），words（带时间戳的 word 列表），chunk_start
-输出：每行的 (start, end)
-
-word_cursor = 0
-for each line (except last):
-    target_chars = len(strip_punct(line))
-    consumed_chars = 0
-    first_word_idx = word_cursor
-
-    while consumed_chars < target_chars and word_cursor < len(words):
-        consumed_chars += len(words[word_cursor].word.strip())
-        word_cursor += 1
-
-    last_word_idx = word_cursor - 1
-    start = words[first_word_idx].start - chunk_start
-    end = words[last_word_idx].end - chunk_start
-
-last line: 取所有剩余 words
+1. 展开 ASR word 列表成字符流，每个字符继承 word 时长均分
+2. 归一化原文和 ASR 字符（zhconv t2s + lower + strip 标点/空白）
+3. SequenceMatcher.get_matching_blocks() 找最长公共子序列匹配
+4. 匹配字符: 继承对应 ASR 字符的时间戳（= 锚点）
+5. 未匹配字符: 从左右锚点线性插值
+6. 边界: 开头无锚点用 0;结尾无锚点用 chunk_total_duration
 ```
 
-### 用 shot01:1 验证
+## 为什么字符级锚定正确
 
-| 行 | 目标字符数 | 消费 word | 时间 | vs 当前 |
-|----|-----------|-----------|------|---------|
-| 1 "我用 OpenClaw" | 10 | 我(1)+用(1)+Open(4)+Cloud(5)=11 >= 10 → 4 words | 0.00-0.84 | 当前 0.00-1.70 |
-| 2 "做了一个资讯推送。" | 8 | 做(1)+了(1)+一个(2)+咨(1)+询(1)+推(1)+送(1)=8 >= 8 → 7 words | 0.84-2.08 | 当前 1.70-3.06 |
-| 3 "需求很简单——抓AI领域的热点，" | 13 | 需~点 = 13 chars → 12 words | 2.22-4.92 | 当前 3.06-5.78 |
+**统一算法替代一堆规则**。对每种 ASR 失败模式都自然处理：
 
-每行都提前了约 0.8-1s，和实际语音对齐。
+| ASR 失败模式 | 字符锚定的表现 |
+|---|---|
+| ASR 错字（Thought→False） | 英文区 0 匹配，周围中文锚点夹着插值；不会泄漏时间到下一句 |
+| ASR 漏字（"的"） | 该字符无锚点，从左右邻居插值，时间落在自然 gap 内 |
+| ASR 多字（幻觉） | 多出的 ASR 字符未被匹配，不占用原文字符时间 |
+| 繁简差异 | 归一化层统一简体，匹配率恢复 |
+| 中英混合 | 字符级处理，不依赖字符和 word 的数量比例 |
 
-## 可行性分析
+**无硬编码**：
+- 没有"0.3s 阈值"
+- 没有"句末标点触发"
+- 没有字符守恒假设
+- 没有 per-language special case
 
-### 优势
+**优雅退化**：ASR 完全不相关（0 匹配）时，退化为"按字符数均分 chunk 时长"——等价于原始 `distribute_timestamps`，不比现状差。
 
-- **改动极小**：只替换 `distribute_timestamps_with_words` 函数体，约 30 行代码
-- **无外部依赖**：纯字符串操作，不需要 NLP 库或模糊匹配
-- **向下兼容**：函数签名不变，P5 task 和 compose_srt 无需改动
-- **不依赖文本相同**：不做内容匹配，只用字符数做消费计数，ASR 错字（"资讯" -> "咨询"）不影响
+## 数据流
 
-### 边界情况
+```
+script.json (作者原文)
+         ↓
+chunks.text (含控制标记 [break]/[pause])
+         ↓ strip_control_markers
+display text (纯文本)
+         ↓ split_subtitle_lines  →  lines = ["行1", "行2", ...]
+         ↓
+"".join(lines)  ← 作为对齐的原文字符序列
+         ↓
+align_chars_to_timestamps(original, asr_words, chunk_start)
+         ↓
+每字符 (start, end) 列表
+         ↓ 按 lines 切段
+每行 cue (start, end, text)
+         ↓
+SRT + metadata.subtitle_cues
+```
+
+## 归一化规则
+
+`server/core/asr_normalize.py::normalize_for_alignment`：
+
+1. 去除 `[...]` 控制标记（包括 `[^phoneme]`）
+2. `zhconv.convert(..., "zh-cn")` — 繁→简
+3. `.lower()` — ASCII 小写
+4. 去除所有标点 / 空白 / 零宽字符 / 全角空格
+
+只用于对齐比对，**不影响显示**。显示文本走 `strip_control_markers`（保留空格、换行、大小写）。两套归一化分层，避免互相影响。
+
+## 边界情况
 
 | 情况 | 处理 |
-|------|------|
-| ASR 总字符 < 显示总字符 | 最后几行可能无 word → snap 到上一行 end（同当前逻辑） |
-| ASR 总字符 > 显示总字符 | 最后一行取所有剩余 word（同当前逻辑） |
-| 单行目标字符为 0 | 保底 target=1（同当前的 max(1, ...) 逻辑） |
-| word_cursor 耗尽 | 剩余行 snap 到最后已知时间（同当前逻辑） |
+|---|---|
+| 原文为空 | 返回 `[]` |
+| ASR 为空，知道总时长 | 按字符数均分时长 |
+| ASR 为空，不知总时长 | 每字符 `(0.0, 0.0)`，上层决定兜底 |
+| 开头未匹配 | 左锚点 = 0.0 |
+| 结尾未匹配 | 右锚点 = max(最后 ASR word.end, chunk_total_duration) |
+| 零匹配（极端差异） | 退化为按字符数均分 |
 
-### 风险
+## 观测
 
-无。算法严格改进，不引入新依赖，不改数据模型。最坏情况退化为和当前比例分配接近的结果（当所有 word 都是单字符时两种算法等价）。
+`SequenceMatcher.ratio()` 给出整体字符匹配度。结合每字符是"锚点"还是"插值"可进一步统计覆盖率。未来如需质量指标落地到 `chunks.metadata.align_quality`，数据来源都现成。
 
-## 涉及文件
+## 相关文件
 
-- `server/core/p5_logic.py` — `distribute_timestamps_with_words` 函数替换
-- `server/tests/` — 对应单元测试更新
+- `server/core/char_alignment.py` — 对齐算法核心
+- `server/core/asr_normalize.py` — 归一化（zhconv + strip）
+- `server/core/p5_logic.py::distribute_timestamps_with_words` — 对接层（30 行 shim）
+- `server/tests/tasks/test_char_alignment.py` — 16 个单元测试
+- `web/components/SubtitleTimingEditor.tsx` — 极端 case 的人工兜底 UI
+
+## 兜底：人工微调
+
+95%+ 场景自动对齐足够准。剩余极端 case（低匹配率、TTS 合成错误）通过 chunk 行的 ⏱ 按钮打开 `SubtitleTimingEditor` 面板手动微调：
+- 查看原文 vs ASR 对照
+- 点击 ASR word 跳音频到该位置试听
+- 手动改 cue 的 start/end
+- 本地预览（不保存也能通过 chunk 播放器试听）
+- 保存 → 覆盖 `chunks.metadata.subtitle_cues` + 重生成 SRT
+
+流程见 `web/components/SubtitleTimingEditor.tsx` 头部注释。
