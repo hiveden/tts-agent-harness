@@ -22,6 +22,7 @@ dependencies = [
   "httpx>=0.27",
   "pypinyin>=0.51",
   "cryptography>=43",
+  "zhconv>=1.4",
 ]
 
 [project.optional-dependencies]

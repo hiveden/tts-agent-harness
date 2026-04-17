@@ -261,23 +261,36 @@ def distribute_timestamps_with_words(
 ) -> list[tuple[float, float]]:
     """Assign ``(start, end)`` to each line using WhisperX word timestamps.
 
-    Ported from the original JS word-level alignment algorithm:
+    Algorithm — character-level anchor + interpolation.
 
-    1. Filter *words* to those having both ``start`` and ``end``.
-    2. Compute per-line character weight (punctuation stripped, min 1).
-    3. Proportionally assign words to lines by weight.
-    4. Last line always gets all remaining words.
-    5. Each line's start/end = first/last assigned word's start/end,
-       offset by *chunk_start* so times are chunk-relative (from 0).
+    Delegates to :func:`server.core.char_alignment.align_chars_to_timestamps`
+    to build a per-character timestamp for the concatenated ``lines``
+    string (which is a stand-in for the display text, already stripped of
+    control markers by ``compose_srt``). Each line's cue then reads its
+    first/last character's times off that array.
+
+    This replaces the previous greedy-consumption + gap-aware implementation.
+    The old approach baked "字符守恒假设" (original char count ≈ ASR char
+    count) into the algorithm, with a stack of special-case rules
+    (``_SENTENCE_END_RE``, ``_SENTENCE_BOUNDARY_GAP_S = 0.3``) patched on
+    top to survive ASR mishearing long English words in Chinese contexts.
+    Every rule carried a magic number and a failure mode.
+
+    The new algorithm has one rule: match characters between script and
+    ASR (after normalization), anchor matched characters to ASR word time,
+    interpolate un-anchored characters between anchors. No thresholds,
+    no punctuation-specific triggers, no accumulating error.
 
     Parameters
     ----------
     lines : list[str]
-        Subtitle lines (from :func:`split_subtitle_lines`).
+        Subtitle lines (from :func:`split_subtitle_lines`). Concatenated
+        to form the character stream that's aligned against ``words``.
     words : list[dict]
         WhisperX word dicts with ``word``, ``start``, ``end`` keys.
     chunk_start : float
-        Absolute start time of the chunk (subtracted from word times).
+        Absolute start time of the chunk (subtracted from word times so
+        the returned cues are chunk-relative, starting near 0).
 
     Returns
     -------
@@ -287,43 +300,40 @@ def distribute_timestamps_with_words(
     if not lines:
         return []
 
-    # Filter to words with valid timestamps.
     valid_words = [w for w in words if w.get("start") is not None and w.get("end") is not None]
     if not valid_words:
         return [(0.0, 0.0) for _ in lines]
 
-    # Character weights (stripped of punctuation, min 1).
-    weights = [max(1, len(_STRIP_PUNCT_RE.sub("", line))) for line in lines]
-    total_weight = sum(weights)
+    # Concatenate lines for character alignment. split_subtitle_lines may
+    # strip inter-line whitespace but the alignment normalization drops
+    # whitespace anyway, so this is safe — the characters that *do* matter
+    # for anchoring (letters, CJK) all survive.
+    original = "".join(lines)
+    from server.core.char_alignment import align_chars_to_timestamps
+
+    char_times = align_chars_to_timestamps(
+        original,
+        valid_words,
+        chunk_start=chunk_start,
+    )
 
     cues: list[tuple[float, float]] = []
-    word_cursor = 0
-
-    for i, w in enumerate(weights):
-        is_last = i == len(lines) - 1
-        ratio = w / total_weight
-        words_for_line = (
-            len(valid_words) - word_cursor
-            if is_last
-            else max(1, round(ratio * len(valid_words)))
-        )
-        if words_for_line <= 0 or word_cursor >= len(valid_words):
-            # Exhausted words — snap to last known time.
-            if cues:
-                last_end = cues[-1][1]
-                cues.append((last_end, last_end))
-            else:
-                cues.append((0.0, 0.0))
+    offset = 0
+    last_end = 0.0
+    for line in lines:
+        ln = len(line)
+        if ln == 0:
+            cues.append((last_end, last_end))
             continue
-
-        first_idx = word_cursor
-        last_idx = min(word_cursor + words_for_line - 1, len(valid_words) - 1)
-
-        line_start = max(0.0, valid_words[first_idx]["start"] - chunk_start)
-        line_end = max(0.0, valid_words[last_idx]["end"] - chunk_start)
-
-        cues.append((round(line_start, 3), round(line_end, 3)))
-        word_cursor = last_idx + 1
+        segment = char_times[offset : offset + ln]
+        if not segment:
+            cues.append((last_end, last_end))
+        else:
+            start = segment[0][0]
+            end = segment[-1][1]
+            cues.append((round(start, 3), round(end, 3)))
+            last_end = end
+        offset += ln
 
     return cues
 
