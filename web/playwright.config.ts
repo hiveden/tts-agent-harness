@@ -1,5 +1,9 @@
 import { defineConfig } from '@playwright/test';
 
+// Heavy e2e config — real API + TTS + WhisperX. Paired with global-setup.ts
+// that checks infra health.
+//
+// For sub-second pure-function tests see ``playwright.unit.config.ts``.
 export default defineConfig({
   testDir: './e2e',
   timeout: 300000,        // 5 min per test (Fish API + WhisperX are slow)

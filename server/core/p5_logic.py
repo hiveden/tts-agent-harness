@@ -380,12 +380,12 @@ def compose_srt(
     transcript_words: list[dict] | None = None,
     chunk_start: float = 0.0,
     max_line_chars: int = _DEFAULT_MAX_LINE_CHARS,
-) -> tuple[str, int]:
-    """One-shot transform: raw chunk text → (srt_document, line_count).
+) -> tuple[str, int, list[dict]]:
+    """One-shot transform: raw chunk text → (srt_document, line_count, cues).
 
-    This is the public entry point used by the Prefect task. Keeping the
-    orchestration here (instead of in the task file) means the I/O layer
-    shrinks to "read transcript → call compose_srt → upload SRT".
+    Returns the cue list alongside the SRT so callers (P5 task) can persist
+    it for the frontend to consume directly. Exposing cues avoids having
+    the UI re-parse the SRT or approximate character timings locally.
 
     Parameters
     ----------
@@ -399,19 +399,27 @@ def compose_srt(
         is provided.
     max_line_chars : int
         Maximum characters per subtitle line for the smart splitter.
+
+    Returns
+    -------
+    tuple[str, int, list[dict]]
+        ``(srt_document, line_count, cues)`` — cues are a JSON-ready list
+        of ``{"start": float, "end": float, "text": str}``. Empty input
+        yields ``("", 0, [])``.
     """
     display = strip_control_markers(source_text)
     lines = split_subtitle_lines(display, max_line_chars=max_line_chars)
     if not lines:
-        return "", 0
+        return "", 0, []
 
     if transcript_words:
         timings = distribute_timestamps_with_words(lines, transcript_words, chunk_start)
     else:
         timings = distribute_timestamps(lines, total_duration)
 
-    cues = [(start, end, text) for (start, end), text in zip(timings, lines)]
-    return build_srt(cues), len(lines)
+    triples = [(start, end, text) for (start, end), text in zip(timings, lines)]
+    cues = [{"start": s, "end": e, "text": t} for s, e, t in triples]
+    return build_srt(triples), len(lines), cues
 
 
 __all__ = [

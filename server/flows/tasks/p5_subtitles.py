@@ -234,7 +234,7 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
         for w in transcript.transcript
     ]
     chunk_start = words_raw[0]["start"] if words_raw else 0.0
-    srt_doc, line_count = compose_srt(
+    srt_doc, line_count, subtitle_cues = compose_srt(
         source_text,
         total_duration,
         transcript_words=words_raw or None,
@@ -270,10 +270,17 @@ async def run_p5_subtitles(chunk_id: str) -> P5Result:
         )
         raise
 
-    # 6. Persist state + stage_finished event.
+    # 6. Persist state + cue metadata + stage_finished event.
+    #
+    #    Cues are written to ``chunks.metadata["subtitle_cues"]`` so the
+    #    frontend karaoke highlight can use the same timings as the SRT.
+    #    Persisting here — *after* the SRT upload succeeded — keeps the two
+    #    artefacts in sync: if the upload fails the UI won't suddenly see
+    #    a stale cue list.
     async with _session_scope(session_factory) as session:
+        chunk_repo = ChunkRepo(session)
+        await chunk_repo.set_subtitle_cues(chunk_id, subtitle_cues)
         # chunk.status stays "verified" — fine-grained progress via stage_runs
-        pass
         await write_event(
             session,
             episode_id=episode_id,

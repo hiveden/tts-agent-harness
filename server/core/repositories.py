@@ -157,6 +157,36 @@ class ChunkRepo:
         await self.session.flush()
         return len(rows)
 
+    async def set_subtitle_cues(
+        self,
+        chunk_id: str,
+        cues: list[dict[str, Any]],
+    ) -> None:
+        """Persist P5 cues into ``chunks.metadata["subtitle_cues"]``.
+
+        The metadata JSONB is a grab-bag of user- and pipeline-owned keys.
+        We read → merge → write so that other keys (e.g. P1 ``segment_type``)
+        are preserved. The operation is a single UPDATE within the caller's
+        transaction; atomicity against concurrent edits on the same chunk
+        relies on the caller's unit-of-work, which matches the rest of this
+        repo.
+
+        Called by :mod:`server.flows.tasks.p5_subtitles` right after the
+        SRT document is uploaded, so the SRT and the metadata cue list are
+        committed together.
+        """
+        chunk = await self.session.get(Chunk, chunk_id)
+        if chunk is None:
+            raise LookupError(f"chunk not found: {chunk_id}")
+        new_meta = dict(chunk.extra_metadata or {})
+        new_meta["subtitle_cues"] = cues
+        stmt = (
+            update(Chunk)
+            .where(Chunk.id == chunk_id)
+            .values(extra_metadata=new_meta)
+        )
+        await self.session.execute(stmt)
+
     async def apply_edits(self, edits: Iterable[ChunkEdit]) -> int:
         """Apply a batch of sparse edits **atomically**.
 

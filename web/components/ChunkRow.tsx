@@ -2,6 +2,7 @@
 
 import { memo, useCallback, useState } from "react";
 import type { Chunk, ChunkEdit, ChunkStatus, StageName } from "@/lib/types";
+import { extractSubtitleCues } from "@/lib/karaoke";
 import { getDisplaySubtitle, stripControlMarkers } from "@/lib/utils";
 import { useHarnessStore } from "@/lib/store";
 import { useAudioPlayer } from "@/hooks/useAudioPlayer";
@@ -192,6 +193,16 @@ export const ChunkRow = memo(function ChunkRow({
               currentTime={player.currentTime}
               baseColorClass={baseColor}
               onSeek={canPlay ? player.seekTo : undefined}
+              // 仅当显示 subtitle 且用户没 dirty-edit 字幕文本时，才用 P5 cues。
+              // TTS 模式下的显示文本是 textNormalized，和 cues 不对应；
+              // 有未应用的编辑时，cues 也可能对应旧文本。两种情况都 fallback
+              // 到匀速近似，避免高亮位置错到另一条文本上。
+              cues={
+                displayMode === "subtitle" &&
+                edit?.subtitleText === undefined
+                  ? extractSubtitleCues(chunk.metadata)
+                  : undefined
+              }
             />
           </div>
           {dirtyBadge ? (

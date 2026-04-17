@@ -11,12 +11,22 @@ export function cn(...inputs: ClassValue[]) {
   return twMerge(clsx(inputs));
 }
 
-/** Strip S2-Pro 控制标记,供字幕显示用。与 P5 脚本的行为一致。 */
+/** Strip S2-Pro 控制标记,供字幕显示用。与 P5 脚本的行为一致。
+ *
+ * 严格镜像 ``server/core/p5_logic.py::strip_control_markers``:
+ *   1. 去掉所有 ``[...]`` 包裹的 token（替换为单个空格，避免粘字）
+ *   2. 折叠空格/tab（但 **保留换行** ——作者用换行强制 cue break）
+ *   3. 修剪换行两侧的空白
+ *   4. 首尾 trim
+ *
+ * 旧实现用 ``\s+`` 把换行也折叠成空格，破坏了作者的显式分行意图——
+ * 这是前端/后端契约漂移，已在本轮清债务中修复。
+ */
 export function stripControlMarkers(text: string | null | undefined): string {
   return String(text ?? "")
-    // Strip all [...] control markers (break/breath/pause/phoneme etc.)
     .replace(/\[[^\[\]]*\]/g, " ")
-    .replace(/\s+/g, " ")
+    .replace(/[ \t]+/g, " ")
+    .replace(/ *\n */g, "\n")
     .trim();
 }
 

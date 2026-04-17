@@ -183,7 +183,7 @@ class TestBuildSrt:
 class TestComposeSrt:
     def test_happy_path(self) -> None:
         text = "你好。世界！"
-        srt, n = compose_srt(text, 4.0)
+        srt, n, _cues = compose_srt(text, 4.0)
         assert n == 2
         assert srt.startswith("1\n00:00:00,000 --> ")
         assert "你好。" in srt
@@ -191,16 +191,30 @@ class TestComposeSrt:
 
     def test_strips_markers_before_split(self) -> None:
         text = "开头。[break] 中段 [^tomato] 结尾！"
-        srt, n = compose_srt(text, 6.0)
+        srt, n, _cues = compose_srt(text, 6.0)
         assert n == 2  # [break] stripped → "开头。" + "中段 番茄-less 结尾！"
         assert "[break]" not in srt
         assert "[^tomato]" not in srt
 
     def test_all_markers_returns_empty(self) -> None:
-        srt, n = compose_srt("[break][long break]", 3.0)
+        srt, n, cues = compose_srt("[break][long break]", 3.0)
         assert srt == ""
         assert n == 0
+        assert cues == []
 
     def test_determinism(self) -> None:
         args = ("第一句话。第二句话！", 5.0)
         assert compose_srt(*args) == compose_srt(*args)
+
+    def test_cues_shape_and_line_count_agree(self) -> None:
+        """Cues is the same data the SRT encodes — exposed as structured
+        JSON so the frontend can drive karaoke highlight without re-parsing
+        the SRT. Shape / length are the contract the frontend relies on."""
+        text = "你好。世界！"
+        _srt, n, cues = compose_srt(text, 4.0)
+        assert len(cues) == n
+        for cue in cues:
+            assert set(cue.keys()) == {"start", "end", "text"}
+            assert isinstance(cue["start"], float)
+            assert isinstance(cue["end"], float)
+            assert isinstance(cue["text"], str)
