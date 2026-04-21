@@ -9,6 +9,27 @@ import { toast } from "sonner";
 import { DropdownMenu, DropdownMenuTrigger, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator } from "@/components/ui/dropdown-menu";
 import { Dialog, DialogContent, DialogHeader, DialogTitle, DialogDescription, DialogFooter } from "@/components/ui/dialog";
 
+/** Abortable sleep. setTimeout itself ignores AbortSignal; this wraps it
+ *  so an in-flight poll loop unwinds immediately when the user switches
+ *  episode or aborts the export. */
+function sleep(ms: number, signal: AbortSignal): Promise<void> {
+  return new Promise((resolve, reject) => {
+    if (signal.aborted) {
+      reject(new DOMException("Aborted", "AbortError"));
+      return;
+    }
+    const timer = setTimeout(resolve, ms);
+    signal.addEventListener(
+      "abort",
+      () => {
+        clearTimeout(timer);
+        reject(new DOMException("Aborted", "AbortError"));
+      },
+      { once: true },
+    );
+  });
+}
+
 interface Props {
   episode: Episode;
   running: boolean;
@@ -38,16 +59,13 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
   const [exporting, setExporting] = useState(false);
   const [maxChunkChars, setMaxChunkChars] = useState(200);
   const exportAbortRef = useRef<AbortController | null>(null);
-  const mountedRef = useRef(true);
 
-  // Cleanup on unmount: abort in-flight export + block late state updates.
-  // Without this, if the user switches episode while the export fetch or
-  // poll loop is pending, setExporting(false) fires on an unmounted
-  // component and React logs a warning.
+  // Abort any in-flight export fetch/poll on unmount. AbortController
+  // alone is sufficient: each await will reject with AbortError, which
+  // the catch block funnels to a quiet return. setState-after-unmount
+  // is harmless in React 18 (no warning, no leak for this component).
   useEffect(() => {
-    mountedRef.current = true;
     return () => {
-      mountedRef.current = false;
       exportAbortRef.current?.abort();
     };
   }, []);
@@ -229,14 +247,12 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
                       { method: "POST", credentials: "include", signal: controller.signal },
                     );
                     if (!triggerRes.ok) throw new Error(await triggerRes.text());
-                    if (!mountedRef.current || controller.signal.aborted) return;
                     toast.info("导出已开始，完成后自动下载");
 
-                    // 2. Poll for completion
+                    // 2. Poll for completion (sleep+fetch both honour signal)
                     const maxAttempts = 120; // 2 min max
                     for (let i = 0; i < maxAttempts; i++) {
-                      await new Promise((r) => setTimeout(r, 1000));
-                      if (!mountedRef.current || controller.signal.aborted) return;
+                      await sleep(1000, controller.signal);
                       const statusRes = await fetch(
                         `${getApiUrl()}/episodes/${episode.id}/export/status`,
                         { credentials: "include", signal: controller.signal },
@@ -251,7 +267,6 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
                         );
                         if (!dlRes.ok) throw new Error(await dlRes.text());
                         const blob = await dlRes.blob();
-                        if (!mountedRef.current || controller.signal.aborted) return;
                         const a = document.createElement("a");
                         a.href = URL.createObjectURL(blob);
                         a.download = `${episode.id}-export.zip`;
@@ -272,12 +287,10 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
                     }
                     throw new Error("导出超时");
                   } catch (e) {
-                    if (controller.signal.aborted) return;
-                    if (mountedRef.current) {
-                      toast.error("导出失败", { description: (e as Error).message });
-                    }
+                    if ((e as Error).name === "AbortError") return;
+                    toast.error("导出失败", { description: (e as Error).message });
                   } finally {
-                    if (mountedRef.current) setExporting(false);
+                    setExporting(false);
                   }
                 }}
               >
