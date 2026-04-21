@@ -334,3 +334,36 @@ web/app/page.tsx       ← 组合层：connect store → components
 ### 纯组件约束微调
 
 原设计禁止组件内任何副作用。实际允许单向 `toast()` 信息展示；仍禁止业务 fetch 与 store mutation（这类行为由 hooks/useAction 承担）。
+
+### 长 async 操作 unmount 安全范式（2026-04-21 tech-debt cleanup）
+
+`EpisodeHeader` 的导出轮询（最长 2 min）演示了推荐的 unmount 守卫范式：
+
+```tsx
+const abortRef = useRef<AbortController | null>(null);
+
+useEffect(() => () => abortRef.current?.abort(), []);
+
+const run = async () => {
+  abortRef.current?.abort();
+  const controller = new AbortController();
+  abortRef.current = controller;
+  try {
+    const res = await fetch(url, { signal: controller.signal });
+    // ... 任意多 await，都带 signal
+    await sleep(1000, controller.signal);   // helper 让 setTimeout 也响应 abort
+  } catch (e) {
+    if ((e as Error).name === "AbortError") return;  // 唯一需要的守卫
+    toast.error(...);
+  } finally {
+    setState(...);  // React 18 下对 unmounted 组件调用是无害的
+  }
+};
+```
+
+**不要**叠加 `mountedRef` + `signal.aborted` + `mountedRef.current` 检查：
+- `AbortController.abort()` 让所有 pending fetch 立刻 reject with `AbortError`
+- `setTimeout` 不响应 signal，但可以用 `sleep(ms, signal)` helper 包一下
+- React 18 已经静默了"unmounted setState" 警告；这个场景下不会 leak（transient 本地 state）
+
+真正可能 leak 的场景（订阅外部 store、长期 EventSource 等）要显式 cleanup，但不是靠 `mountedRef` 而是靠对应资源的 close/unsubscribe。

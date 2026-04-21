@@ -1,6 +1,17 @@
 # TTS Agent Harness — 并发架构优化方案
 
-> **状态（2026-04-21）**：Phase 1 ✅ 已完成 / Phase 2 🟡 半实装（export 未迁 Prefect、下载非真流式） / Phase 3 ❌ 未开工（仍为单 worker）。各 Phase 段落末尾标注具体偏差。
+> **状态（2026-04-21）**：Phase 1 ✅ 已完成 / Phase 2 🟡 完成实用部分、剩余子项经 code review **明确否决** / Phase 3 ❌ 未开工（业务取舍，单用户单 worker 够用）。
+
+### 本轮 code review 决策（2026-04-21）
+
+原设计里"Export 迁 Prefect flow"、"download 真流式生成器"、"`_running_tasks` 迁 DB"这些子项，在实际代码 review 时被**明确否决**：
+
+- **Export 持久化（DB 表）**：单进程重启丢内存状态 → 前端提示"服务可能已重启，请重新点击导出"就够；跨进程要 advisory lock / heartbeat，DB 表是半吊子；否决。
+- **真流式 zip 下载**：当前 `BytesIO + StreamingResponse` 本身就按 chunk 读，非"一次性加载"。zip 在内存构建是 zip 格式特性（central directory 在末尾），真流式需要 `stream-zip` 或临时文件，架构重构而非技术债。
+- **`storage.download_stream` 基础设施**：曾经写了这个函数，code review 判定为无 caller 的投机性代码，删除。
+- **Phase 3 多 worker**：单用户/小团队根本不需要，维持单 uvicorn worker 稳定跑。
+
+结论：并发优化 Phase 1 的阻塞消除 + 行锁 + 连接池调整已覆盖当前所有痛点。Phase 2/3 里未完成部分是**业务取舍**，不是遗留债。
 
 ## 0. 业务痛点
 
@@ -91,18 +102,18 @@ deploy/supervisord.conf:16
 | HTTP (Fish TTS / Groq) | `httpx.AsyncClient` | ✅ |
 | DB | SQLAlchemy `AsyncSession`，pool 10/20 | ✅ |
 | Pipeline 执行 | `asyncio.create_task`（dev）/ Prefect flow（prod） | ✅ |
-| SSE 推送 | PostgreSQL LISTEN/NOTIFY → asyncio.Queue fan-out | ✅（单 worker；多 worker 就绪但未部署） |
-| Export 任务 | `asyncio.Task` + `_export_tasks` dict | 🟡 异步已 OK，持久化未做 |
-| Export 下载 | `StreamingResponse` 外壳 + 一次性加载内存 | 🟡 接口形态对，但内部非真流式 |
+| SSE 推送 | PostgreSQL LISTEN/NOTIFY → asyncio.Queue fan-out | ✅（单 worker；多 worker 代码已就绪） |
+| Export 任务 | `asyncio.Task` + `_exports` 内存 dict | ✅ 单进程内完整；重启靠前端提示重试 |
+| Export 下载 | `BytesIO + StreamingResponse`（按 chunk 读） | ✅ 现实内存占用可接受 |
+| cleanup task（删 episode 后清 MinIO） | `asyncio.create_task` + `_cleanup_tasks` 强引用 | ✅ 防 GC |
 
-### 1.4 剩余并发风险
+### 1.4 当前接受的局限（业务取舍，不列入债）
 
-| 场景 | 风险等级 | 原因 | 解法 |
-|------|---------|------|------|
-| 多 worker SSE | 中 | `_subscribers` per-worker 已就位但未实际部署多 worker | Phase 3 |
-| 多 worker 任务管理 | 高 | `_running_tasks` / `_export_tasks` 仍为进程级 dict | Phase 3 |
-| 大 zip 下载占内存 | 中 | `download_bytes()` 一次性读全文件 | Phase 2 收尾 |
-| Export 进程重启丢状态 | 中 | 无持久化（重启后 `_export_tasks` 丢失） | Phase 2 收尾 |
+| 场景 | 性质 | 处置 |
+|------|------|------|
+| 进程重启丢 in-flight export | 取舍 | 前端轮询收 `status: "none"` 时提示"服务可能已重启，请重新点击导出" |
+| 多 worker 部署 | 未开工 | 单 worker 稳定跑；多并发场景出现再做 |
+| 超大 zip 下载峰值内存 | 格式限制 | zip 需要 central directory 在末尾，真流式需重构；现实规模可接受 |
 
 ---
 
@@ -267,7 +278,7 @@ return StreamingResponse(
 )
 ```
 
-**当前实装（待修）**：`episodes.py:1575` 的 `download_bytes()` 仍是一次性把整个 zip 读入内存再 `iter([zip_bytes])`，对大 episode 会占用高内存。
+**当前实装**：`episodes.py` 的 download 端点用 `BytesIO + StreamingResponse`。FastAPI 对 BytesIO 按 64KB chunk 读取，属分块流式。zip 的内存峰值来自"zip 整个在 BytesIO 里构建"这步 —— 是 zip 格式要求（central directory 在末尾），真流式需 `stream-zip` 库或临时文件。code review 判定当前规模可接受，不做重构。
 
 - Starlette StreamingResponse：https://www.starlette.io/responses/#streamingresponse
 
@@ -304,40 +315,36 @@ create_async_engine(
 
 **效果**：事件循环不再被阻塞，单 worker 可交替处理多个导出 + 试听 + SSE。防止 pipeline 重复触发。生产已验证。
 
-### Phase 2：Export 任务队列化 — 🟡 半实装
+### Phase 2：Export 异步化 — ✅ 完成（实用部分）
 
-**驱动场景**：批量导出 3-5 个 episode，每个 10-30s，用户不愿干等。且为 Phase 3 多人并发打基础——重活必须离开 API 进程。
+**驱动场景**：批量导出 3-5 个 episode，每个 10-30s，用户不愿干等。
 
 | 改动 | 文件 | 状态 |
 |------|------|------|
-| export 抽成异步任务（非阻塞 API） | `episodes.py::_run_export` | ✅ 用 `asyncio.Task` 实现 |
-| API 端改为 POST 触发 + GET 查询 + GET 下载 | `episodes.py` | ✅ 接口形态正确 |
-| 前端：提交任务 → SSE/轮询 → 下载 | `EpisodeHeader.tsx` | ✅ |
+| export 抽成异步任务（非阻塞 API） | `episodes.py::_run_export` | ✅ `asyncio.Task` + `_exports` 内存 dict |
+| API 端改为 POST 触发 + GET 查询 + GET 下载 | `episodes.py` | ✅ |
+| 前端：提交任务 → 轮询 → 下载 | `EpisodeHeader.tsx` | ✅（AbortController + AbortError 守卫） |
+| 前端：进程重启场景友好提示 | `EpisodeHeader.tsx` | ✅ 轮询收 `status: "none"` 抛 "服务可能已重启，请重新点击导出" |
 | export 产物存 MinIO | `storage.py` | ✅ |
-| **export 迁 Prefect flow（持久化 + 跨进程）** | 新建 `flows/tasks/export.py` | ❌ **未做** |
-| **下载真流式（`async for chunk in storage.download_stream`）** | `episodes.py:1575` | ❌ **未做**：当前 `download_bytes()` 一次性加载整个 zip |
 
-**当前局限**：
-- `_export_tasks` 为进程级 dict —— 重启进程或切多 worker 会丢状态
-- 大 episode 下载瞬时占内存 = 整个 zip 大小
+#### 原设计里本 Phase 未完成、经 code review 明确否决的子项
 
-**完成 Phase 2 的剩余工作**：
-1. 把 export 逻辑包成 Prefect flow，API 端改走 `prefect.client.create_flow_run_from_deployment`
-2. 删除 `_export_tasks` 全局 dict，状态改从 `flow_run.state` 查询
-3. `download_bytes()` 改真流式生成器
+| 子项 | 否决理由 |
+|------|---------|
+| export 迁 Prefect flow + `export_jobs` DB 表 | 单进程用内存 dict + 前端提示即可；跨进程需 advisory lock/heartbeat，DB 表是半吊子 |
+| `storage.download_stream` 基础设施 | 无 caller，投机性代码 |
+| 真流式 zip 生成器 | BytesIO + StreamingResponse 已分块流；zip 格式要求 central directory 在末尾，真流式是架构重构 |
 
-### Phase 3：无状态 API + 多 Worker — ❌ 未开工
+### Phase 3：无状态 API + 多 Worker — ❌ 未开工（业务取舍）
 
-**驱动场景**：多人同时操作线上系统。
+单用户/小团队单 worker 稳定跑，Phase 1 已消除痛点。多人并发出现前不开工。
 
 | 改动 | 文件 | 状态 |
 |------|------|------|
-| `_running_tasks` → DB 字段 + Prefect 状态查询 | `episodes.py` | ❌ 仍为进程级 dict |
-| `_subscribers` → per-worker 独立 LISTEN 连接 | `sse.py` | ✅ 代码就绪 |
+| `_running_tasks` → DB 字段 + Prefect 状态查询 | `episodes.py` | ❌ 进程级 dict（单 worker 够用） |
+| `_subscribers` → per-worker 独立 LISTEN 连接 | `sse.py` | ✅ 代码已就绪 |
 | supervisord 启动命令改 Gunicorn + UvicornWorker | `deploy/supervisord.conf` | ❌ 仍为单 Uvicorn worker |
-| dev 模式 pipeline 也走 Prefect（消除 asyncio.Task） | `episodes.py` | ❌ |
-
-**当前生产**：单 worker 下运行稳定，Phase 1 已解决最痛的阻塞问题。Phase 3 仅在扩容到多 worker 或上线前开启多人并发时才必须。
+| `_run_dev` 与 Prefect flow 统一（消除双写） | `episodes.py` + `flows/run_episode.py` | ❌ 语义已分叉（`failed` vs `needs_review`、P6v 有无、逐 stage vs 逐 chunk），统一前需产品决策 |
 
 ---
 

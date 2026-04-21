@@ -155,3 +155,13 @@ sonner 已在用，无替换需求。
 - sonner toast
 
 查询类错误当前多以 toast 呈现或静默处理，未独立实现"内联错误 + Retry 按钮"——实践中按需触发 `mutate()` 重载即可，没必要专用组件。
+
+### 本轮补丁（tech-debt cleanup 2026-04-21）
+
+- **`ApiKeyDialog` 的 fetch 错误处理**：原本 `fetchStatus().then(...)` 无 `.catch`，网络失败用户完全不知道；补上 catch + `parseKeysStatus` runtime shape 校验。这里是少数**没走 openapi-fetch** 的地方（`/keys` 路径不在 OpenAPI schema 里），保留手写 fetch 但加了类型 guard。后续如果 schema 覆盖了 `/keys`，应替换为 openapi-fetch client。
+- **`audio.play().catch(() => {})` 静默吞错**：改为 `console.warn`，至少给诊断留个落脚点（不 toast，避免用户被满屏打扰）。
+- **长轮询 unmount 安全**：`EpisodeHeader` 导出轮询用 `AbortController` 一把收：unmount 时 abort → 所有 `await fetch({signal})` 抛 `AbortError` → catch 块识别 `AbortError` 静默 return。**不再额外加 `mountedRef`**（双重保护冗余）。`setTimeout` 包了一个 `sleep(ms, signal)` helper 让它也响应 abort。
+
+### Export "服务重启" 边缘情况
+
+Export 状态活在进程内存（`_exports` dict），跨重启丢。API 查询返回 `{"status": "none"}` 时有两种可能：从未导过 / 导过但重启了。前端在**轮询中**收到 `none` 视为后者，抛"服务可能已重启，请重新点击导出"。

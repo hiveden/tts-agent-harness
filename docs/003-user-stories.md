@@ -180,7 +180,8 @@ P1 [✓ 20/20] ─── P2 [17/20 ⚠3] ─── P2v [17/17] ─── P5 [17/
 
 | 功能点 | 状态 |
 |---|---|
-| F-13 删除 episode | ✅ `DELETE /episodes/{id}` + cascade |
+| F-13 删除 episode | ✅ `DELETE /episodes/{id}` + DB cascade + MinIO prefix cleanup（先 DB commit 再 storage 清理，storage 抖动不阻塞 API） |
+| F-13-2 Event 表 FK 约束 | ✅ V004 migration 加 `FOREIGN KEY ... ON DELETE CASCADE`（2026-04-21 补，之前 event 是 orphan 风险） |
 | F-14 复制 episode | ✅ `POST .../duplicate` |
 | F-15 归档 episode | ✅ `POST .../archive`；`GET /episodes` 默认排除 archived |
 
@@ -249,6 +250,9 @@ P1 [✓ 20/20] ─── P2 [17/20 ⚠3] ─── P2v [17/17] ─── P5 [17/
 |---|---|---|---|---|
 | BP-A | TTS Config 联动 P2（F-05-4） | 需确认 `p2_synth.py` 确实从 `episode.config` 读参数；若仅用 env var，则 UI 修改 config 不生效 | 中 | 代码抽查 + 补 test |
 | BP-B | 跳过已确认 chunk（F-06-2） | `run_episode.py` 注释声明跳过，需在 `_run_synthesize` 验证实际跳过逻辑 | 中 | 加 integration test |
+| BP-C | `edit_chunk` 不失效旧 take/transcript | 用户编辑 `text_normalized` 后，路由只改文本，不重置 `chunk.status`、不清 `selected_take_id`、不标 stale。若用户不立刻级联 retry，下次 P2v 可能用旧数据字幕错乱 | 中 | 已被 `test_edit_chunk_invalidation.py` 里 2 个 `xfail(strict=True)` 固化；修 bug 后 xfail 自动转 pass |
+| BP-D | `SubtitleTimingEditor.tsx` 不存在 | CLAUDE.md 提到"⏱ 按钮 → `SubtitleTimingEditor`"，但 `web/components/` grep 无此组件 | 低 | 文档/代码不一致；grep 确认是改名、未落地、还是藏在别处 |
+| BP-E | `_run_dev` 与 `run_episode_flow` 语义分叉 | 两边失败标签（`failed` vs `needs_review`）、是否跑 P6v、调度粒度（逐 stage vs 逐 chunk）都不同。统一前需产品决策 | 中 | issue，本轮不做 |
 
 ---
 
@@ -265,11 +269,13 @@ P1 [✓ 20/20] ─── P2 [17/20 ⚠3] ─── P2v [17/17] ─── P5 [17/
 | US-07 重试 P2 | test_retry_chunk | test_routes::test_retry_chunk | test_chunk_operations::test_retry |
 | US-10 Finalize take | — | test_routes::test_finalize_take | — |
 | US-11 查看日志 | — | test_routes::test_get_chunk_log | — |
-| US-13 删除 | — | test_routes::test_delete_episode | test_episode_crud::test_delete |
+| US-13 删除 | — | test_routes::test_delete_episode + test_delete_episode_cleans_minio + test_delete_episode_tolerates_storage_failure | test_episode_crud::test_delete |
 | US-14 复制 | — | test_routes::test_duplicate | — |
 | US-15 归档 | — | test_routes::test_archive | — |
 | US-18 SSE | test_sse | — | test_sse |
 | US-19 认证 | — | test_routes::test_auth_* | — |
+| BP-C edit_chunk 失效 | — | test_edit_chunk_invalidation（4 pass + 2 xfail 固化 bug） | — |
+| P5 手动 cue offset | test_subtitle_cue_offset::5 pass + 1 rounding regression | — | — |
 
 ### 待补测
 
