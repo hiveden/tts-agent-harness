@@ -97,6 +97,12 @@ make tsc          # 验证一致性
 | `NEXT_PUBLIC_API_URL` | `http://localhost:8100` | 自动设置 |
 | `FISH_TTS_KEY` | — | 需要手动设置才能调用 Fish API |
 | `HARNESS_API_TOKEN` | — | 不设则 dev mode（允许所有请求） |
+| `WHISPERX_MODE` | `local` | `local` / `docker` / `groq` |
+| `GROQ_API_KEY` | — | `WHISPERX_MODE=groq` 时必需 |
+| `COOKIE_SECURE` | `false` | API Token cookie（prod 下需 `true`） |
+| `STORAGE_QUOTA_GB` / `STORAGE_TARGET_GB` | — | 启用存储配额清理时设置（`server/core/cleanup.py`） |
+
+完整配置表见 [002-config-design](002-config-design.md)。
 
 ## 重要：ClashX 代理
 

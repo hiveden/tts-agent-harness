@@ -28,7 +28,7 @@ P1 切分 → P1c 校验 → P2 TTS合成 → P2c WAV校验 → P2v 转写验证
 | `p6v_check.py` | 端到端验证：覆盖率/gap/overlap | 是 |
 
 核心逻辑在 `server/core/`：
-- `p5_logic.py` / `char_alignment.py` / `asr_normalize.py` — 字幕时间对齐（设计见 `docs/design-p5-subtitle-alignment.md`）
+- `p5_logic.py` / `char_alignment.py` / `asr_normalize.py` — 字幕时间对齐（设计见 `docs/021-design-p5-subtitle-alignment.md`）
 - `p6_logic.py` — 拼接 offset 计算
 - `p2v_scoring.py` — ASR 转写打分
 

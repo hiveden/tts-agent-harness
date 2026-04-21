@@ -319,3 +319,18 @@ web/app/page.tsx       ← 组合层：connect store → components
 | Phase 4 | 5 个组件纯化 | 15 min |
 | Phase 5 | Playwright e2e + tsc | 5 min |
 | **总计** | | **~70 min** |
+
+## 落地状态（2026-04-21）
+
+核心架构（Zustand + shadcn + openapi-fetch + 五层分层）已全部落地。`page.tsx` 稳定在 120-150 行区间（初稿目标 ~100 行，因加入了键盘快捷键、批量操作、连续播放等交互合理扩张）。
+
+后续新增的功能与组件：
+
+- **`useAction` hook**（`web/lib/useAction.ts` ~22 行）：统一 loading + error toast + 防重复，已在 `page.tsx` 大量使用
+- **连续播放**：`ContinuousPlayBar` + store 状态 `continuousPlay` / `playbackRate`
+- **批量选择**：`batchMode` / `batchSelected` 模式 + `batchRun` / `batchExport`
+- **运行取消 / Stage 级重试**：`execCancel` / `execStageRetry`
+
+### 纯组件约束微调
+
+原设计禁止组件内任何副作用。实际允许单向 `toast()` 信息展示；仍禁止业务 fetch 与 store mutation（这类行为由 hooks/useAction 承担）。

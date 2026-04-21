@@ -26,7 +26,7 @@
 
 ## 环境变量 & Secrets
 
-通过 `flyctl secrets` 管理，不进代码：
+**Secrets（`flyctl secrets set KEY=value`，不进代码）：**
 
 | Secret | 必需 | 说明 |
 |--------|------|------|
@@ -36,18 +36,23 @@
 | `MINIO_SECRET_KEY` | 是 | Tigris secret key |
 | `MINIO_BUCKET` | 是 | `hiveden-tts-storage` |
 | `MINIO_SECURE` | 是 | `true` |
-| `GROQ_API_KEY` | 否 | 服务端 ASR，不设则用户需自带 |
+| `HARNESS_API_TOKEN` | 建议 | 开启 API 鉴权（未设 = 允许所有访问） |
+| `GROQ_API_KEY` | 可选 | 服务端 ASR；不设则依赖用户自带或本地 WhisperX |
+| `FISH_TTS_KEY` | 不设 | 用户在页面自行配置（避免共享配额） |
 
-**不设 `FISH_TTS_KEY`** — 用户在页面自行配置，避免白嫖额度。
-
-`fly.toml` 中的 env（非敏感）：
+**`fly.toml` 中的非敏感 env：**
 
 ```toml
 [env]
   LOG_LEVEL = 'info'
-  WHISPERX_URL = ''
-  CORS_ORIGINS = ''
+  WHISPERX_URL = ''         # 空 = prod 禁用本地 WhisperX，依赖 Groq 或用户自带
+  CORS_ORIGINS = ''         # 同域部署无需 CORS
+  COOKIE_SECURE = 'true'    # HTTPS 下 API Token cookie 必需
+  # STORAGE_QUOTA_GB = '20' # 启用存储配额管理时设置
+  # STORAGE_TARGET_GB = '15'
 ```
+
+> **WHISPERX_URL 空值约定**：表示 prod 不启动本地 WhisperX 服务；若同时设置 `WHISPERX_MODE=groq` 则走 Groq 云端转写。
 
 ## Dockerfile 要点
 
@@ -150,3 +155,8 @@ flyctl secrets set KEY=value --app hiveden-tts
 # 删除
 flyctl secrets unset KEY --app hiveden-tts
 ```
+
+## 已知局限
+
+- **单 Uvicorn worker**：`deploy/supervisord.conf` 启动命令仍为 `uvicorn ... --port 8100`，未切到 Gunicorn + 多 worker。并发优化 Phase 3 未开工，详见 [018-architecture-concurrency](018-architecture-concurrency.md)。
+- **Export 未持久化**：进程重启会丢失 `_export_tasks` 状态，正在导出的任务会变"孤儿"。

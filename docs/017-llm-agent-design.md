@@ -1,7 +1,11 @@
 # 017 — LLM Agent 介入点设计
 
-> 日期: 2026-04-13
-> 状态: 草案
+> 日期: 2026-04-13 （最近回看: 2026-04-21）
+> **状态：🟡 Planned（二期路线，当前未实装）**
+>
+> 代码侧未发现任何对应实现：无 `server/core/llm_client.py`、无 Ollama 调用封装、无 `p1r/p2r` 预筛 task、无 `/chunks/{cid}/suggestions` API、无 `AgentBanner/SuggestionCard` 前端组件、无相关测试。
+>
+> 本文保留为决策档案。启动时建议先做 PoC：在 P2v 后追加可插拔的 `p2r_review` task，仅对 score 低于阈值的 chunk 触发 LLM，验证建议质量后再全量接入。
 
 ---
 

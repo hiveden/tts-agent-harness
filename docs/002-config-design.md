@@ -1,25 +1,13 @@
 # 配置管理设计方案
 
-## 现状问题
-
-配置散落在 5 个地方，切换环境需要改代码：
-
-```
-.env                    ← Fish TTS key、proxy（部分服务读）
-docker/.env             ← Docker compose 端口（只 compose 读）
-Makefile                ← 端口硬编码、proxy 清除逻辑
-server/core/db.py       ← DATABASE_URL 默认值硬编码
-server/flows/tasks/p3_transcribe.py  ← WHISPERX_URL 默认值硬编码
-web/lib/api-client.ts   ← API_URL 默认值硬编码
-```
-
-结果：每次切环境要改多个文件，容易漏。
+> 初稿: 2026-04-10
+> 最近更新: 2026-04-21（补新变量 GROQ/STORAGE/COOKIE；修正迁移进度；P3 → P2v 术语）
 
 ## 设计原则
 
 1. **单一配置源**：所有配置从根目录 `.env` 文件读，不散落
 2. **不改代码切环境**：`.env.dev` / `.env.prod` / `.env.test` 切文件，不改代码
-3. **有默认值**：不配 `.env` 也能跑（用 dev 默认值），降低上手门槛
+3. **有默认值**：不配 `.env` 也能跑，降低上手门槛
 4. **三层读取**：`.env` 文件 → 环境变量 → 代码默认值（优先级从高到低）
 
 ## 配置变量全表
@@ -35,6 +23,8 @@ web/lib/api-client.ts   ← API_URL 默认值硬编码
 | `MINIO_BUCKET` | `tts-harness` | `tts-harness` | FastAPI |
 | `MINIO_SECURE` | `false` | `true` | FastAPI |
 | `PREFECT_API_URL` | `http://localhost:54200/api` | `http://prefect:4200/api` | FastAPI (prefect mode) |
+| `PREFECT_API_DATABASE_CONNECTION_URL` | `postgresql+asyncpg://prefect:prefect@prefect-db:5432/prefect` | 同 dev 思路 | docker-compose (Prefect server) |
+| `PREFECT_UI_URL` | `http://localhost:54200` | — | docker-compose |
 
 ### 应用服务
 
@@ -42,8 +32,8 @@ web/lib/api-client.ts   ← API_URL 默认值硬编码
 |---|---|---|---|
 | `API_PORT` | `8100` | `8000` | Makefile, Dockerfile |
 | `WEB_PORT` | `3010` | `3010` | Makefile, Dockerfile |
-| `WHISPERX_URL` | `http://localhost:7860` | `http://whisperx-svc:7860` | P3 task |
-| `NEXT_PUBLIC_API_URL` | `http://localhost:8100` | `http://api:8000` | Next.js (编译时) |
+| `WHISPERX_URL` | `http://localhost:7860` | `http://whisperx-svc:7860` 或空（prod 用 Groq） | P2v task |
+| `NEXT_PUBLIC_API_URL` | `http://localhost:8100` | `http://api:8000` | Next.js（编译时） |
 
 ### 外部服务
 
@@ -52,20 +42,24 @@ web/lib/api-client.ts   ← API_URL 默认值硬编码
 | `FISH_TTS_KEY` | (无默认) | `your-key` | P2 task |
 | `FISH_TTS_REFERENCE_ID` | (无默认) | `voice-id` | P2 task |
 | `FISH_TTS_MODEL` | `s2-pro` | `s2-pro` | P2 task |
+| `GROQ_API_KEY` | (无默认，可选) | `your-groq-key` | P2v task（`WHISPERX_MODE=groq` 时） |
 
-### 运行模式
+### 运行模式 / 鉴权 / 存储
 
 | 变量 | dev 默认值 | prod 示例 | 消费者 |
 |---|---|---|---|
 | `TTS_USE_PREFECT` | (空 = dev mode) | `1` | FastAPI run/retry/finalize |
 | `HARNESS_API_TOKEN` | (空 = 无鉴权) | `secret-token` | FastAPI auth |
+| `COOKIE_SECURE` | `false` | **`true`**（HTTPS 环境必需） | `server/api/routes/keys.py:15` |
 | `LOG_LEVEL` | `info` | `warning` | uvicorn |
+| `STORAGE_QUOTA_GB` | 如 `20` | 生产按容量设 | `server/core/cleanup.py:75-76` |
+| `STORAGE_TARGET_GB` | 如 `15` | 清理目标值 | `server/core/cleanup.py:75-76` |
 
-### 网络/代理
+### 网络 / 代理
 
 | 变量 | dev 默认值 | prod 示例 | 消费者 |
 |---|---|---|---|
-| `HTTPS_PROXY` | (从系统继承) | (无) | httpx (Fish API) |
+| `HTTPS_PROXY` | (从系统继承 ClashX) | (无) | httpx (Fish API) |
 | `NO_PROXY` | `localhost,127.0.0.1` | (无) | 防止 localhost 连接走代理 |
 
 ### Docker compose 端口映射
@@ -82,32 +76,31 @@ web/lib/api-client.ts   ← API_URL 默认值硬编码
 ```
 tts-agent-harness/
 ├── .env                  ← 当前激活的配置（.gitignore，不进 git）
-├── .env.dev              ← dev 环境模板（进 git）
-├── .env.prod             ← prod 环境模板（进 git，不含真实 secret）
-├── .env.test             ← test 环境模板（进 git）
-├── docker/.env           ← 删除，统一到根 .env
+├── .env.dev              ← dev 环境模板（进 git） ✅ 已存在
+├── .env.prod             ← prod 环境模板（进 git，不含真实 secret） ❌ 未创建，prod 目前靠 fly.toml + flyctl secrets
+├── .env.test             ← test 环境模板（进 git） ❌ 未创建，测试环境共用 .env.dev
+└── docker/.env.example   ← 旧残留，建议清理（已统一到根 .env）
 ```
+
+> **注**：初稿规划了完整三文件模板。当前实际只有 `.env.dev` 进入仓库；prod 配置在 fly.toml 的 `[env]` + flyctl secrets 中维护。若要追平设计，需要补建 `.env.prod`/`.env.test` 并删除 `docker/.env.example`。
 
 ## 各消费者如何读取
 
 ### Makefile
 
 ```makefile
-# 加载 .env（如果存在）
 -include .env
 export
 
-# 端口从 .env 读，有默认值
 API_PORT   ?= 8100
 WEB_PORT   ?= 3010
 ```
 
-不再 hardcode 端口和 proxy 处理。
+端口与 proxy 处理从 `.env` 读。
 
 ### Docker compose
 
 ```yaml
-# docker-compose.dev.yml
 services:
   postgres:
     ports:
@@ -119,49 +112,44 @@ compose 的 `--env-file` 指向根 `.env`：
 COMPOSE := docker compose --env-file .env -f docker/docker-compose.dev.yml
 ```
 
-删除 `docker/.env`，统一用根目录 `.env`。
-
 ### FastAPI (server/core/db.py)
 
 ```python
 import os
-
 DATABASE_URL = os.environ.get("DATABASE_URL",
-    "postgresql+asyncpg://harness:harness@localhost:55432/harness")
+    "postgresql+asyncpg://harness:harness@localhost:5432/harness")
 ```
 
-已经是这样，不用改。只要 `.env` 正确加载到环境变量。
+默认 fallback 为 `5432`（标准 PG 端口）；dev 通过 `.env.dev` 覆盖为 `55432`，避免和本机已装的 Postgres 冲突。
 
-### P3 task (whisperx URL)
+### P2v task（转写）
 
 ```python
 WHISPERX_URL = os.environ.get("WHISPERX_URL", "http://localhost:7860")
+GROQ_API_KEY = os.environ.get("GROQ_API_KEY", "")
 ```
 
-已改，不用再动。
+根据 `WHISPERX_MODE` 选择 local WhisperX 或 Groq 云端。
 
-### Next.js (前端)
+### Next.js（前端）
 
 ```typescript
 const API_URL = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8100";
 ```
 
-已经是这样。`make serve-web` 启动时从 `.env` 读 `NEXT_PUBLIC_API_URL`。
-
 ### Makefile serve target
 
 ```makefile
 serve-api:
-    # 加载 .env 到进程环境
     set -a && [ -f .env ] && . ./.env; set +a; \
-    # 设 NO_PROXY 防止 localhost 走代理（不删 HTTPS_PROXY，Fish API 需要）
     NO_PROXY="localhost,127.0.0.1" \
     uvicorn server.api.main:app --port $${API_PORT:-8100}
 
 serve-whisperx:
-    # 根据 .env 决定是 Docker 还是本地 Python
     if [ "$${WHISPERX_MODE}" = "docker" ]; then
         docker run ... whisperx-svc:dev
+    elif [ "$${WHISPERX_MODE}" = "groq" ]; then
+        echo "using Groq cloud API, no local service to start"
     else
         .venv/bin/uvicorn whisperx-svc.server:app --port 7860
     fi
@@ -172,12 +160,14 @@ serve-whisperx:
 | 变量 | 值 | 行为 |
 |---|---|---|
 | `WHISPERX_MODE=local` | 用 `.venv` 本地 Python 跑 | dev 默认（ARM 原生，快） |
-| `WHISPERX_MODE=docker` | 用 Docker 容器跑 | prod / CI 用 |
-| `WHISPERX_URL` | `http://localhost:7860` | P3 task 连接地址，两种 mode 都一样 |
+| `WHISPERX_MODE=docker` | 用 Docker 容器跑 | 需要隔离时 |
+| `WHISPERX_MODE=groq` | 走 Groq 云 API | prod 推荐（无本地依赖） |
+| `WHISPERX_URL` | `http://localhost:7860` | P2v task 连接地址 |
+| `GROQ_API_KEY` | `secret` | `groq` 模式必需 |
 
 ## 环境模板
 
-### .env.dev
+### .env.dev（示意，真实见仓库）
 
 ```bash
 # === Infrastructure ===
@@ -204,16 +194,22 @@ LOG_LEVEL=info
 FISH_TTS_KEY=your-key-here
 # FISH_TTS_REFERENCE_ID=
 # FISH_TTS_MODEL=s2-pro
+# GROQ_API_KEY=   # 仅 WHISPERX_MODE=groq 时需要
 
-# === Runtime mode ===
-# TTS_USE_PREFECT=     # 空 = dev mode (in-process flow)
+# === Runtime mode / Auth ===
+# TTS_USE_PREFECT=     # 空 = dev mode
 # HARNESS_API_TOKEN=   # 空 = 无鉴权
+COOKIE_SECURE=false
+
+# === Storage cleanup ===
+STORAGE_QUOTA_GB=20
+STORAGE_TARGET_GB=15
 
 # === Network ===
 NO_PROXY=localhost,127.0.0.1
 ```
 
-### .env.prod
+### .env.prod（模板，未创建文件 — 当前配置走 fly.toml + flyctl secrets）
 
 ```bash
 # === Infrastructure ===
@@ -228,23 +224,24 @@ MINIO_SECURE=true
 # === Application ===
 API_PORT=8000
 WEB_PORT=3010
-WHISPERX_URL=http://whisperx-svc:7860
-WHISPERX_MODE=docker
+# WHISPERX_URL 留空 = 禁用本地；改用 Groq
+WHISPERX_MODE=groq
 NEXT_PUBLIC_API_URL=http://api:8000
 LOG_LEVEL=warning
 
 # === External services ===
 FISH_TTS_KEY=${FISH_KEY}
+GROQ_API_KEY=${GROQ_KEY}
 
-# === Runtime mode ===
+# === Runtime mode / Auth ===
 TTS_USE_PREFECT=1
 HARNESS_API_TOKEN=${API_TOKEN}
+COOKIE_SECURE=true     # HTTPS 必需
 ```
 
-### .env.test
+### .env.test（模板，未创建）
 
 ```bash
-# 继承 .env.dev 的大部分，覆盖需要的
 DATABASE_URL=postgresql+asyncpg://harness:harness@localhost:55432/harness
 MINIO_ENDPOINT=localhost:59000
 WHISPERX_URL=http://localhost:7860
@@ -268,7 +265,7 @@ cp .env.prod .env
 cp .env.test .env
 ```
 
-或者 Makefile 提供快捷命令：
+或 Makefile 快捷命令：
 
 ```makefile
 env-dev:
@@ -281,12 +278,20 @@ env-test:
     cp .env.test .env && echo "switched to test"
 ```
 
-## 迁移步骤
+## 迁移步骤状态
 
-1. 创建 `.env.dev` / `.env.prod` / `.env.test` 模板文件
-2. 把用户现有的 `.env`（Fish key 等）合并到 `.env.dev`
-3. 删除 `docker/.env`，compose 改读根 `.env`
-4. Makefile 删除 hardcode 端口，全部从 `.env` 读
-5. 代码里的默认值保持（作为 fallback），但与 `.env.dev` 的默认值对齐
-6. `make serve` 加 `serve-whisperx`（根据 `WHISPERX_MODE` 决定启动方式）
-7. `.gitignore` 加 `.env`（不进 git），`.env.dev` / `.env.prod` 进 git
+| # | 步骤 | 状态 |
+|---|------|------|
+| 1 | 创建 `.env.dev` | ✅ |
+| 1 | 创建 `.env.prod` | ❌ prod 改走 fly.toml + flyctl secrets |
+| 1 | 创建 `.env.test` | ❌ test 共用 .env.dev |
+| 2 | 把原有 `.env` 合并到 `.env.dev` | ✅ |
+| 3 | 删除 `docker/.env` / compose 读根 `.env` | ⚠️ compose 已改但 `docker/.env.example` 残留 |
+| 4 | Makefile 端口从 `.env` 读 | ✅ |
+| 5 | 代码默认值与 `.env.dev` 对齐 | ✅ |
+| 6 | `serve-whisperx` 按 `WHISPERX_MODE` 启动 | ✅（含 groq 分支） |
+| 7 | `.gitignore` 加 `.env` | ✅ |
+
+**待收尾项**：
+1. 若需 `.env.prod`/`.env.test` 进仓库，按模板创建
+2. 清理 `docker/.env.example`

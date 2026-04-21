@@ -137,3 +137,15 @@ for c in target:
 | `server/api/routes/episodes.py` `_run_dev` | episode 最终状态根据 chunk 聚合 |
 | `server/api/routes/episodes.py` `_retry_dev` | 同样的容错模式 |
 | `web/app/page.tsx` | failedCount 同时看 chunk.status 和 StageRun |
+
+## 落地状态（2026-04-21）
+
+故障隔离模式（P2/P2c/P2v `try/except` + `continue`）与前端 `failedCount` 聚合均已实装。设计与实装的命名差异：
+
+- **`retry_async` / `_retry` 实装位置**：重试逻辑以 **inline 闭包**形式定义在 `server/api/routes/episodes.py:595` `_run_dev` 内部：
+  ```python
+  async def _retry(fn, *args, retries=3, backoff=(2, 4, 8), **kwargs):
+      ...
+  ```
+  功能上与设计目标一致（`retries=3`、指数退避 2/4/8s），只是未抽成顶层模块。Prefect 路径走 `@task(retries=N, retry_delay_seconds=...)`，由框架负责。
+- **`_retry_dev` 命名**：实际代码中未见独立函数，重试路径复用 `_run_dev`，按 `mode="retry_failed"` 参数区分。

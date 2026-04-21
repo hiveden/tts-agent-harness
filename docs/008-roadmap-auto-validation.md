@@ -1,72 +1,84 @@
-# 自动校验与自动修复 — 后续方向
+# 自动校验 Pipeline — 实装与决策
+
+> **状态（2026-04-21）**：Phase 1 校验框架 ✅ 已全部实装（P1c/P2c/P2v/P6v）。
+> Phase 2-4（自动修复 / 智能调参 / LLM 集成）在 2026-04-11~13 明确**废弃**，改为"单次执行 + 失败交人工 review"。LLM 辅助路线由 [017-llm-agent-design](017-llm-agent-design.md) 承接。
 
 ## 目标
 
-Pipeline 每个 stage 完成后自动校验产物正确性，发现问题自动修复（重试 / 调参 / 换文本），减少人工介入。
+Pipeline 每个 stage 完成后自动校验产物正确性，发现问题交人工 review。
+原设计中的"自动修复（重试 / 调参 / 换文本）"已判定为过度工程，参见下文"废弃决策"。
 
-## 校验规则
+## 已实装：校验规则与 Task
 
-### P2 (TTS 合成)
-| 检查项 | 规则 | 修复策略 |
-|---|---|---|
-| WAV header | RIFF 签名 + PCM 格式 | 重试 P2 |
-| Duration | 0.3s < duration < 60s | 如果异常，重新解析 header 或重试 |
-| 文件大小 | > 1KB | 重试 P2 |
-| 静音检测 | RMS > 阈值 | 重试 P2（可能 Fish API 返回了空白音频） |
+| Stage | 校验项 | 实装文件 |
+|-------|-------|---------|
+| **P1c** | chunk 字数上下限、emoji 过滤、`[break]/[breath]` 等控制标签合法性 | `server/flows/tasks/p1c_check.py` |
+| **P2c** | WAV 格式（RIFF/PCM）、采样率、单声道、duration 合理范围 | `server/flows/tasks/p2c_check.py` |
+| **P2v** | WhisperX/Groq 转写 + 2D scoring（字符匹配率 + 时长偏差） | `server/flows/tasks/p2v_verify.py` + `server/core/p2v_scoring.py` |
+| **P6v** | 端到端：总时长、cue 覆盖率、gap/overlap 检测 | `server/flows/tasks/p6v_check.py` |
 
-### P3 (转写)
-| 检查项 | 规则 | 修复策略 |
-|---|---|---|
-| Word 数量 | > 0 | 重试 P3（WhisperX 可能没检测到语音） |
-| 时间戳单调 | start[i] < start[i+1] | 重试 P3 |
-| 覆盖率 | transcript 总时长 / take duration > 80% | 警告（可能有静音段） |
-| 文字匹配 | TTS 源文本 vs 转写文本的相似度 | 如果 < 60% → P2 发音偏差，建议调参或改文本 |
+校验失败会设置 `chunk.status=needs_review`（或 `failed`），由 UI 上的 ✎（编辑文本重跑 P2）/ ⏱（手动微调 cue）工具人工兜底。
 
-### P5 (字幕)
-| 检查项 | 规则 | 修复策略 |
-|---|---|---|
-| Cue 数量 | > 0 | 重跑 P5 |
-| 时间戳不重叠 | end[i] <= start[i+1] | 重跑 P5 |
-| 总时长 | ≤ take duration + 0.1s | 警告 |
+### 原始校验规则表（历史参考）
 
-### P6 (拼接)
-| 检查项 | 规则 | 修复策略 |
-|---|---|---|
-| Final WAV 时长 | ≈ sum(chunk durations) + padding | 警告 |
-| Final SRT cue 数 | = sum(chunk cue 数) | 重跑 P6 |
+下表为 2026-04-12 设计时的规则草案。**P3 阶段已在同一轮重构中合并入 P2v**，阶段名随之改动；规则本体大多已落地到对应 task。
 
-## 自动修复策略
+<details>
+<summary>展开查看原始规则表</summary>
 
+#### P2 (TTS 合成) → P2c
+| 检查项 | 规则 |
+|---|---|
+| WAV header | RIFF 签名 + PCM 格式 |
+| Duration | 0.3s < duration < 60s |
+| 文件大小 | > 1KB |
+| 静音检测 | RMS > 阈值 |
+
+#### P3 (转写) → P2v（现已合并）
+| 检查项 | 规则 |
+|---|---|
+| Word 数量 | > 0 |
+| 时间戳单调 | start[i] < start[i+1] |
+| 覆盖率 | transcript 总时长 / take duration > 80% |
+| 文字匹配 | TTS 源文本 vs 转写文本的相似度（< 60% 标记 needs_review） |
+
+#### P5 (字幕)
+| 检查项 | 规则 |
+|---|---|
+| Cue 数量 | > 0 |
+| 时间戳不重叠 | end[i] <= start[i+1] |
+| 总时长 | ≤ take duration + 0.1s |
+
+#### P6 (拼接) → P6v
+| 检查项 | 规则 |
+|---|---|
+| Final WAV 时长 | ≈ sum(chunk durations) + padding |
+| Final SRT cue 数 | = sum(chunk cue 数) |
+
+</details>
+
+## 废弃决策：自动修复（Phase 2-4）
+
+### 时间线
+- `7abf2ff`（2026-04-11）— **remove L0/L1 repair loop**：自动重试机制移除
+- `5e391a6`（2026-04-13）— **remove dead repair module**：`RepairConfig` / `RepairAction` 类删除
+
+### 决策理由
+1. **Fish S2-Pro 的随机性**使得同文本重试不稳定，"重试同 stage"难以在确定性前提下给出可复现结果
+2. **自动调参**（temperature/top_p 微调）效果不显著且引入 Fish API 额外调用成本
+3. 人工兜底工具（✎ 编辑文本重跑、⏱ 微调 cue）已经足够高效，错听率 < 5% 的 chunk 字幕自动对齐即可，严重 case 人工 30s 内处理
+4. 自动修复会让失败根因被掩盖，不利于暴露 TTS/ASR 真实质量问题
+
+### 当前设计：单次 + 人工 review
 ```
-stage 完成
-  → 运行校验规则
-  → 全部通过 → ok
-  → 有失败项:
-    → 可自动修复（重试同 stage）:
-      → attempt < max_retries → 重试
-      → attempt >= max_retries → 标记 failed + 人工介入
-    → 需要上游修复（如 P2 发音偏差）:
-      → 自动调参重试（temperature ±0.1）
-      → 或标记 "建议修改文本" → 人工介入
+P1 → P1c → P2 → P2c → P2v → P5 → P6 → P6v
+                              │
+                              └─ 失败/分数低 → chunk.status=needs_review
+                                                UI 提示人工介入
 ```
 
-## 实现阶段
+不再追求 "pipeline 跑完即交付"。可控性优先于自动化。
 
-### Phase 1: 校验框架
-- 每个 stage 一个 `validate_p{N}(result) -> list[ValidationIssue]`
-- ValidationIssue: level (error/warning), code, message
-- 在 dev runner 和 Prefect task 中调用
+## LLM 辅助（原 Phase 4）
 
-### Phase 2: 自动重试
-- 校验失败 + level=error → 自动重试同 stage
-- max_retries=3，超过标记 failed
-
-### Phase 3: 智能修复
-- P2 发音偏差检测（P3 转写 vs TTS 源文本 diff）
-- 自动调参（temperature/top_p 微调后重试）
-- LLM 辅助文本修正（用 Claude 建议替换发音不准的词）
-
-### Phase 4: LLM 集成
-- Script 自动润色（上传前 Claude 优化文本可读性）
-- 发音问题自动诊断 + 建议修正
-- 质量打分（整 episode 的整体评分）
+原计划的脚本润色、发音诊断、质量打分，已转到独立文档 [017-llm-agent-design](017-llm-agent-design.md) 作为二期路线规划（当前未实装）。

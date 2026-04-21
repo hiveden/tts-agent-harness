@@ -145,3 +145,13 @@ Task 异常
 ### D. Toast 库
 
 sonner 已在用，无替换需求。
+
+## 落地状态（2026-04-21）
+
+文档设计全部落地：
+- `useAction` hook（~22 行）：`web/lib/useAction.ts`
+- openapi-fetch middleware 拦截 5xx
+- Error Boundary class component（~20 行）：`web/components/ErrorBoundary.tsx`
+- sonner toast
+
+查询类错误当前多以 toast 呈现或静默处理，未独立实现"内联错误 + Retry 按钮"——实践中按需触发 `mutate()` 重载即可，没必要专用组件。
