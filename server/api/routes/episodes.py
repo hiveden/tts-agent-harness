@@ -8,12 +8,21 @@ from __future__ import annotations
 
 import asyncio
 import json
+import logging
 import os
+import uuid
 from datetime import datetime
 from typing import Any
 
+log = logging.getLogger(__name__)
+
 # In-flight run tasks — cancel support
 _running_tasks: dict[str, asyncio.Task] = {}  # episode_id → Task
+
+# In-flight background cleanup tasks — held by strong ref so the GC
+# cannot collect the coroutine before it finishes. Key is a random
+# uuid; value is the Task. We pop on completion.
+_cleanup_tasks: dict[str, asyncio.Task] = {}
 
 from fastapi import APIRouter, Depends, File, Form, Query, Request, UploadFile
 from minio.error import S3Error
@@ -222,11 +231,15 @@ async def create_episode(
 
     await session.commit()
 
-    # Trigger storage cleanup in background (best-effort)
-    import asyncio
+    # Trigger storage cleanup in background (best-effort).
+    # Store a strong reference in `_cleanup_tasks` so the Python GC cannot
+    # collect the coroutine before it finishes; pop on completion.
     from server.core.cleanup import cleanup_if_needed
     from server.core.db import get_sessionmaker
-    asyncio.create_task(cleanup_if_needed(get_sessionmaker(), storage))
+    cleanup_task = asyncio.create_task(cleanup_if_needed(get_sessionmaker(), storage))
+    cleanup_task_id = str(uuid.uuid4())
+    _cleanup_tasks[cleanup_task_id] = cleanup_task
+    cleanup_task.add_done_callback(lambda _: _cleanup_tasks.pop(cleanup_task_id, None))
 
     return EpisodeView.model_validate(ep)
 
@@ -389,6 +402,7 @@ async def update_config(
 async def delete_episode(
     episode_id: str,
     session: AsyncSession = Depends(get_session),
+    storage: MinIOStorage = Depends(get_storage),
 ) -> DeleteResponse:
     repo = EpisodeRepo(session)
     ep = await repo.get(episode_id)
@@ -400,6 +414,21 @@ async def delete_episode(
     if not deleted:
         raise DomainError("not_found", f"episode '{episode_id}' not found")
     await session.commit()
+
+    # Clean up MinIO objects under this episode's prefix (best-effort).
+    # DB rows are already gone; if storage cleanup fails we log and return
+    # success so the caller sees a consistent "deleted" state. Orphan
+    # objects can be reconciled by a sweep tool if needed.
+    try:
+        await storage.delete_prefix(f"episodes/{episode_id}/")
+    except Exception as exc:
+        import logging
+        logging.getLogger("episodes").warning(
+            "delete_episode storage cleanup failed episode=%s err=%s",
+            episode_id,
+            exc,
+        )
+
     return DeleteResponse(deleted=True)
 
 
@@ -760,7 +789,7 @@ async def run_episode(
                         await EpisodeRepo(sess).set_status(episode_id, "failed")
                         await sess.commit()
                 except Exception:
-                    pass
+                    log.exception("dev-run failed episode=%s", episode_id)
 
         task = asyncio.create_task(_run_dev())
         _running_tasks[episode_id] = task
@@ -1478,12 +1507,33 @@ async def get_episode_script(
 
 
 # ---------------------------------------------------------------------------
+# Export — async background build with in-memory state
 # ---------------------------------------------------------------------------
-# Export — async background export with SSE progress
-# ---------------------------------------------------------------------------
+# Single-process state. On server restart, in-flight exports are lost and
+# the dict is empty; the frontend treats a "none" response to a poll
+# request as "service restarted, please re-trigger".
+_exports: dict[str, dict] = {}
 
-# Track running export tasks (dev mode only; production uses Prefect)
-_export_tasks: dict[str, asyncio.Task] = {}
+
+async def _run_export(
+    episode_id: str,
+    session_factory,
+    storage: MinIOStorage,
+) -> None:
+    """Build the export zip and update _exports[episode_id] in place."""
+    from server.core.export_logic import export_zip_key, run_export
+
+    _exports[episode_id]["status"] = "running"
+    try:
+        await run_export(episode_id, session_factory=session_factory, storage=storage)
+    except Exception as exc:
+        log.exception("Export failed for %s", episode_id)
+        _exports[episode_id].update(
+            status="failed", error=f"{type(exc).__name__}: {exc}"[:500]
+        )
+        return
+
+    _exports[episode_id].update(status="done", zip_key=export_zip_key(episode_id))
 
 
 @router.post("/episodes/{episode_id}/export")
@@ -1492,68 +1542,48 @@ async def trigger_export(
     session: AsyncSession = Depends(get_session),
     storage: MinIOStorage = Depends(get_storage),
 ):
-    """Trigger async export. Returns immediately with status.
-
-    The export runs in the background and emits SSE events:
-    export_started → export_finished (with zip_key) / export_failed.
-    """
-    from server.core.export_logic import export_zip_key, run_export
-
+    """Trigger async export. Returns immediately."""
     repo = EpisodeRepo(session)
     ep = await repo.get(episode_id)
     if ep is None:
         raise DomainError("not_found", f"episode '{episode_id}' not found")
 
-    # Prevent duplicate exports
-    if episode_id in _export_tasks and not _export_tasks[episode_id].done():
-        return {"status": "running", "message": "export already in progress"}
+    existing = _exports.get(episode_id)
+    if existing and existing.get("status") in ("pending", "running"):
+        task = existing.get("task")
+        if task is not None and not task.done():
+            return {"status": "running", "message": "export already in progress"}
 
     from server.core.db import get_sessionmaker
     session_factory = get_sessionmaker()
 
-    async def _run():
-        try:
-            await run_export(episode_id, session_factory=session_factory, storage=storage)
-        except Exception:
-            log.exception("Export failed for %s", episode_id)
-
-    task = asyncio.create_task(_run())
-    _export_tasks[episode_id] = task
-    task.add_done_callback(lambda _: _export_tasks.pop(episode_id, None))
+    _exports[episode_id] = {"status": "pending"}
+    task = asyncio.create_task(_run_export(episode_id, session_factory, storage))
+    _exports[episode_id]["task"] = task
+    # keep the entry around after completion so /status keeps answering
+    # done/failed until the next trigger overwrites it.
 
     return {"status": "started", "message": "export triggered"}
 
 
 @router.get("/episodes/{episode_id}/export/status")
-async def export_status(
-    episode_id: str,
-    session: AsyncSession = Depends(get_session),
-):
-    """Check export status by querying the latest export event."""
-    from server.core.export_logic import export_zip_key
+async def export_status(episode_id: str):
+    """Return current in-process export state.
 
-    # Check latest export event
-    stmt = (
-        select(Event)
-        .where(Event.episode_id == episode_id, Event.kind.in_(["export_started", "export_finished", "export_failed"]))
-        .order_by(Event.id.desc())
-        .limit(1)
-    )
-    result = await session.execute(stmt)
-    event = result.scalar_one_or_none()
-
-    if event is None:
+    Returns ``{"status": "none"}`` either when the user never triggered
+    an export, or when the process restarted and lost in-memory state.
+    The frontend treats ``none`` during an active poll as "please
+    re-trigger".
+    """
+    entry = _exports.get(episode_id)
+    if entry is None:
         return {"status": "none"}
-    if event.kind == "export_started":
-        return {"status": "running"}
-    if event.kind == "export_finished":
-        return {
-            "status": "done",
-            "zip_key": event.payload.get("zip_key"),
-            "size_bytes": event.payload.get("size_bytes"),
-        }
-    # export_failed
-    return {"status": "failed", "error": event.payload.get("error", "unknown")}
+    status = entry.get("status", "none")
+    if status == "done":
+        return {"status": "done", "zip_key": entry.get("zip_key")}
+    if status == "failed":
+        return {"status": "failed", "error": entry.get("error", "unknown")}
+    return {"status": status}
 
 
 @router.get("/episodes/{episode_id}/export/download")
@@ -1561,14 +1591,21 @@ async def download_export(
     episode_id: str,
     storage: MinIOStorage = Depends(get_storage),
 ):
-    """Download the exported zip from MinIO."""
+    """Stream the latest successfully-exported zip for this episode."""
     from urllib.parse import quote
 
     from fastapi.responses import StreamingResponse
 
     from server.core.export_logic import export_zip_key
 
-    zip_key = export_zip_key(episode_id)
+    entry = _exports.get(episode_id)
+    if entry and entry.get("status") == "done" and entry.get("zip_key"):
+        zip_key = entry["zip_key"]
+    else:
+        # Fall back to derived key — covers the "process restarted but
+        # the zip is still in MinIO" case.
+        zip_key = export_zip_key(episode_id)
+
     if not await storage.exists(zip_key):
         raise DomainError("not_found", "export not found — trigger export first")
 

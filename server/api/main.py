@@ -32,7 +32,6 @@ from server.core.db import _database_url
 
 @asynccontextmanager
 async def lifespan(_app: FastAPI) -> AsyncIterator[None]:
-    # Start SSE listener
     await start_listener(_database_url())
     yield
     await stop_listener()

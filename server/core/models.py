@@ -88,6 +88,11 @@ class Episode(Base):
         cascade="all, delete-orphan",
         passive_deletes=True,
     )
+    events: Mapped[list["Event"]] = relationship(
+        back_populates="episode",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
 
 
 class Chunk(Base):
@@ -135,6 +140,11 @@ class Chunk(Base):
         passive_deletes=True,
     )
     stage_runs: Mapped[list["StageRun"]] = relationship(
+        back_populates="chunk",
+        cascade="all, delete-orphan",
+        passive_deletes=True,
+    )
+    events: Mapped[list["Event"]] = relationship(
         back_populates="chunk",
         cascade="all, delete-orphan",
         passive_deletes=True,
@@ -204,13 +214,24 @@ class Event(Base):
         primary_key=True,
         autoincrement=True,
     )
-    episode_id: Mapped[str] = mapped_column(Text, nullable=False)
-    chunk_id: Mapped[str | None] = mapped_column(Text, nullable=True)
+    episode_id: Mapped[str] = mapped_column(
+        Text,
+        ForeignKey("episodes.id", ondelete="CASCADE"),
+        nullable=False,
+    )
+    chunk_id: Mapped[str | None] = mapped_column(
+        Text,
+        ForeignKey("chunks.id", ondelete="CASCADE"),
+        nullable=True,
+    )
     kind: Mapped[str] = mapped_column(Text, nullable=False)
     payload: Mapped[dict[str, Any]] = mapped_column(JsonType, nullable=False)
     created_at: Mapped[datetime] = mapped_column(
         DateTime(timezone=True), nullable=False, server_default=func.now()
     )
+
+    episode: Mapped["Episode"] = relationship(back_populates="events")
+    chunk: Mapped["Chunk | None"] = relationship(back_populates="events")
 
 
 __all__ = [

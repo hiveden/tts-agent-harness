@@ -41,14 +41,14 @@ export function ScriptPreview({ title, description, segments }: Props) {
 
       {/* Segments */}
       <div className="space-y-3">
-        {segments.map((seg, i) => {
+        {segments.map((seg) => {
           const typeColor =
             (seg.type && TYPE_COLOR[seg.type]) ||
             "bg-neutral-50 text-neutral-600 border-neutral-200";
           const cleanText = stripControlMarkers(seg.text);
           return (
             <div
-              key={i}
+              key={seg.id}
               className="border border-neutral-200 dark:border-neutral-700 rounded-lg p-3 hover:border-neutral-300 dark:hover:border-neutral-600 transition-colors"
             >
               <div className="flex items-baseline gap-2 mb-2">

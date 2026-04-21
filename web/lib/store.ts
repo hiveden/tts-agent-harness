@@ -210,6 +210,10 @@ export const useHarnessStore = create<HarnessState>((set, get) => ({
 
   previewTake: (audioUri) => {
     const audio = new Audio(api.getAudioUrl(audioUri));
-    audio.play().catch(() => {});
+    audio.play().catch((e) => {
+      // Not toast-worthy (autoplay blocked, network hiccup) but also not
+      // something we should swallow silently when debugging.
+      console.warn("audio play failed:", e);
+    });
   },
 }));

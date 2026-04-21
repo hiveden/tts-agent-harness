@@ -207,8 +207,12 @@ async def _build_zip(
                     with io.BytesIO(shot_wav_bytes) as wio:
                         with wave.open(wio) as wf:
                             dur = wf.getnframes() / wf.getframerate()
-                except Exception:
+                except Exception as exc:
                     dur = sum(item["take_duration_s"] for item in items)
+                    log.warning(
+                        "export-zip wav-header-fallback episode=%s shot=%s chunks=%d estimated_duration=%.2f err=%s",
+                        episode_id, shot_id, len(items), dur, exc,
+                    )
 
                 durations.append({
                     "id": shot_id,

@@ -26,19 +26,40 @@ interface KeysStatus {
 
 const API = getApiUrl();
 
-async function fetchStatus(): Promise<KeysStatus> {
-  const res = await fetch(`${API}/keys/status`, { credentials: "include" });
-  return res.json();
+// NOTE: /keys endpoints are NOT in the generated OpenAPI schema
+// (web/lib/gen/openapi.d.ts), so we keep hand-written fetch here.
+// When the backend schema exports /keys, migrate to `api.GET/POST/DELETE`.
+
+interface SaveKeysBody {
+  fish_key?: string;
+  groq_key?: string;
 }
 
-async function saveKeys(body: { fish_key?: string; groq_key?: string }): Promise<KeysStatus> {
+async function parseKeysStatus(res: Response): Promise<KeysStatus> {
+  if (!res.ok) {
+    throw new Error(`keys request failed: ${res.status} ${res.statusText}`);
+  }
+  const body = (await res.json()) as Partial<KeysStatus>;
+  return {
+    fish: Boolean(body.fish),
+    groq: Boolean(body.groq),
+    error: body.error ?? null,
+  };
+}
+
+async function fetchStatus(): Promise<KeysStatus> {
+  const res = await fetch(`${API}/keys/status`, { credentials: "include" });
+  return parseKeysStatus(res);
+}
+
+async function saveKeys(body: SaveKeysBody): Promise<KeysStatus> {
   const res = await fetch(`${API}/keys`, {
     method: "POST",
     headers: { "Content-Type": "application/json" },
     body: JSON.stringify(body),
     credentials: "include",
   });
-  return res.json();
+  return parseKeysStatus(res);
 }
 
 async function clearKeys(): Promise<KeysStatus> {
@@ -46,7 +67,7 @@ async function clearKeys(): Promise<KeysStatus> {
     method: "DELETE",
     credentials: "include",
   });
-  return res.json();
+  return parseKeysStatus(res);
 }
 
 export function ApiKeyDialog({ open, onClose }: Props) {
@@ -64,10 +85,16 @@ export function ApiKeyDialog({ open, onClose }: Props) {
       setFishStatus("idle");
       setGroqKey("");
       setGroqStatus("idle");
-      fetchStatus().then((s) => {
-        setFishConfigured(s.fish);
-        setGroqConfigured(s.groq);
-      });
+      fetchStatus()
+        .then((s) => {
+          setFishConfigured(s.fish);
+          setGroqConfigured(s.groq);
+        })
+        .catch((e) => {
+          // Don't silently swallow — at minimum surface in console so a
+          // failing /keys/status request is debuggable.
+          console.warn("fetchStatus failed", e);
+        });
     }
   }, [open]);
 
@@ -75,12 +102,17 @@ export function ApiKeyDialog({ open, onClose }: Props) {
     const trimmed = fishKey.trim();
     if (!trimmed) return;
     setFishStatus("testing");
-    const s = await saveKeys({ fish_key: trimmed });
-    if (s.fish && !s.error) {
-      setFishConfigured(true);
-      setFishKey("");
-      setFishStatus("ok");
-    } else {
+    try {
+      const s = await saveKeys({ fish_key: trimmed });
+      if (s.fish && !s.error) {
+        setFishConfigured(true);
+        setFishKey("");
+        setFishStatus("ok");
+      } else {
+        setFishStatus("fail");
+      }
+    } catch (e) {
+      console.warn("saveKeys(fish) failed", e);
       setFishStatus("fail");
     }
   };
@@ -89,18 +121,27 @@ export function ApiKeyDialog({ open, onClose }: Props) {
     const trimmed = groqKey.trim();
     if (!trimmed) return;
     setGroqStatus("testing");
-    const s = await saveKeys({ groq_key: trimmed });
-    if (s.groq && !s.error) {
-      setGroqConfigured(true);
-      setGroqKey("");
-      setGroqStatus("ok");
-    } else {
+    try {
+      const s = await saveKeys({ groq_key: trimmed });
+      if (s.groq && !s.error) {
+        setGroqConfigured(true);
+        setGroqKey("");
+        setGroqStatus("ok");
+      } else {
+        setGroqStatus("fail");
+      }
+    } catch (e) {
+      console.warn("saveKeys(groq) failed", e);
       setGroqStatus("fail");
     }
   };
 
   const handleClearAll = async () => {
-    await clearKeys();
+    try {
+      await clearKeys();
+    } catch (e) {
+      console.warn("clearKeys failed", e);
+    }
     setFishConfigured(false);
     setGroqConfigured(false);
     setFishKey("");

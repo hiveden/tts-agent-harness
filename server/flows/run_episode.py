@@ -57,7 +57,7 @@ async def run_episode_flow(
     padding_ms / shot_gap_ms : int
         P6 concat parameters.
     """
-    log.info("run-episode [%s] mode=%s ep=%s", mode, mode, episode_id)
+    log.info("run-episode mode=%s ep=%s", mode, episode_id)
 
     if mode == "chunk_only":
         return await _run_chunk_only(episode_id)

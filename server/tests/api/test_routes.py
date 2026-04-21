@@ -228,6 +228,58 @@ class TestEpisodeCRUD:
         resp = await client.delete("/episodes/nope")
         assert resp.status_code == 404
 
+    async def test_delete_episode_cleans_minio(self, seeded_client: AsyncClient):
+        """Deleting an episode must wipe its MinIO prefix (regression guard)."""
+        from server.api.main import app
+        from server.api.deps import get_storage
+
+        shared_storage = MagicMock()
+        shared_storage.upload_bytes = AsyncMock(
+            return_value="s3://tts-harness/test/script.json"
+        )
+        shared_storage.ensure_bucket = AsyncMock()
+        shared_storage.delete_prefix = AsyncMock(return_value=3)
+
+        # Replace the per-request mock factory with a shared instance so we
+        # can assert on it after the request completes.
+        app.dependency_overrides[get_storage] = lambda: shared_storage
+        try:
+            resp = await seeded_client.delete("/episodes/ep-test")
+            assert resp.status_code == 200
+            assert resp.json()["deleted"] is True
+            shared_storage.delete_prefix.assert_awaited_once_with(
+                "episodes/ep-test/"
+            )
+        finally:
+            # Restore the default override so later tests don't see this mock.
+            app.dependency_overrides[get_storage] = _override_get_storage
+
+    async def test_delete_episode_tolerates_storage_failure(
+        self, seeded_client: AsyncClient
+    ):
+        """Storage cleanup failures must not break the delete API (best-effort)."""
+        from server.api.main import app
+        from server.api.deps import get_storage
+
+        shared_storage = MagicMock()
+        shared_storage.upload_bytes = AsyncMock(
+            return_value="s3://tts-harness/test/script.json"
+        )
+        shared_storage.ensure_bucket = AsyncMock()
+        shared_storage.delete_prefix = AsyncMock(side_effect=RuntimeError("boom"))
+
+        app.dependency_overrides[get_storage] = lambda: shared_storage
+        try:
+            resp = await seeded_client.delete("/episodes/ep-test")
+            assert resp.status_code == 200
+            assert resp.json()["deleted"] is True
+            shared_storage.delete_prefix.assert_awaited_once()
+            # DB row is still gone even though storage cleanup raised.
+            resp2 = await seeded_client.get("/episodes/ep-test")
+            assert resp2.status_code == 404
+        finally:
+            app.dependency_overrides[get_storage] = _override_get_storage
+
 
 class TestRunEpisode:
     async def test_trigger_run(self, seeded_client: AsyncClient):

@@ -42,7 +42,6 @@ EventKind = Literal[
     "verify_started",
     "verify_finished",
     "verify_failed",
-    "repair_decided",
     "needs_review",
     "review_reset",
 ]

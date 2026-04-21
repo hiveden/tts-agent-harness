@@ -97,7 +97,13 @@ export function LogViewer({ log, error }: Props) {
           ) : log.length === 0 ? (
             <div className="text-neutral-500 italic">无日志</div>
           ) : (
-            log.map((line, i) => <div key={i}>{line}</div>)
+            log.map((line, i) => (
+              // Log lines are append-only and have no server id. The
+              // array never reorders or splices, so index is a stable
+              // key here — we just want the intent documented.
+              // eslint-disable-next-line react/no-array-index-key
+              <div key={i}>{line}</div>
+            ))
           )}
         </div>
       )}

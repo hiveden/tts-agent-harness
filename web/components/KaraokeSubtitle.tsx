@@ -111,6 +111,10 @@ export function KaraokeSubtitle({
             ? "text-neutral-300 dark:text-neutral-600"
             : baseColorClass;
         return (
+          // Per-character render: char values repeat (many "的"/"a" in
+          // a string), so we key by position. When `text` changes the
+          // whole component re-renders from the caller anyway.
+          // eslint-disable-next-line react/no-array-index-key
           <span
             key={i}
             onClick={onSeek ? () => onSeek(charTime(i)) : undefined}

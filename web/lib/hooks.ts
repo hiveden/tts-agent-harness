@@ -2,7 +2,18 @@
 
 import { useEffect } from "react";
 import useSWR from "swr";
-import type { ChunkEdit, Episode, EpisodeSummary, StageName } from "./types";
+import type {
+  AttemptRecord,
+  Chunk,
+  ChunkEdit,
+  Episode,
+  EpisodeSummary,
+  StageName,
+  StageRun,
+  StageStatus,
+  Take,
+  VerifyScores,
+} from "./types";
 import type { components } from "./gen/openapi";
 import { api, getApiUrl } from "./api-client";
 import { connectSSE } from "./sse-client";
@@ -21,21 +32,131 @@ function apiError(err: unknown): Error {
 
 type ApiEpisodeSummary = components["schemas"]["EpisodeSummary"];
 type ApiEpisodeDetail = components["schemas"]["EpisodeDetail"];
+type ApiChunkDetail = components["schemas"]["ChunkDetail"];
+type ApiTakeView = components["schemas"]["TakeView"];
+type ApiStageRunView = components["schemas"]["StageRunView"];
 
 // ---------------------------------------------------------------------------
 // Converters: generated API types → frontend domain types
 //
-// Since backend outputs camelCase, these are mostly identity casts.
-// Only needed where frontend types differ from API types (e.g. optional
-// vs nullable, extra computed fields).
+// Backend outputs camelCase so most fields pass through, but the generated
+// OpenAPI schema lags the backend in two ways:
+//   1. `locked` is missing from EpisodeSummary/EpisodeDetail (server sends
+//      it, schema hasn't been regenerated).
+//   2. StageRunView.stage is typed `string` upstream; we narrow to StageName.
+//   3. Nullable fields (`string | null`) are mapped to optional (`string?`).
+//
+// We read the extra fields via a structural lookup + runtime guard rather
+// than a blanket `as unknown as` cast so actual schema drift fails loudly.
 // ---------------------------------------------------------------------------
 
+const STAGE_NAMES: ReadonlySet<string> = new Set<StageName>([
+  "p1",
+  "p1c",
+  "p2",
+  "p2c",
+  "p2v",
+  "p5",
+  "p6",
+  "p6v",
+]);
+
+function readLocked(raw: Record<string, unknown>): boolean {
+  const v = raw["locked"];
+  // Backend always sends `locked`; default to false only if truly missing
+  // (old API responses during migration). Don't throw — UI just treats as
+  // unlocked, which is the safe fallback.
+  return typeof v === "boolean" ? v : false;
+}
+
+function ensureStageName(stage: string): StageName {
+  if (!STAGE_NAMES.has(stage)) {
+    throw new Error(`unknown stage name from API: ${stage}`);
+  }
+  return stage as StageName;
+}
+
+function toStageRun(raw: ApiStageRunView): StageRun {
+  return {
+    stage: ensureStageName(raw.stage),
+    status: raw.status as StageStatus,
+    attempt: raw.attempt,
+    startedAt: raw.startedAt ?? undefined,
+    finishedAt: raw.finishedAt ?? undefined,
+    durationMs: raw.durationMs ?? undefined,
+    error: raw.error ?? undefined,
+    logUri: raw.logUri ?? undefined,
+    stale: raw.stale,
+  };
+}
+
+function toTake(raw: ApiTakeView): Take {
+  return {
+    id: raw.id,
+    audioUri: raw.audioUri,
+    durationS: raw.durationS,
+    params: raw.params,
+    createdAt: raw.createdAt,
+  };
+}
+
+function toChunk(raw: ApiChunkDetail): Chunk {
+  const metadata = raw.metadata ?? {};
+  // attemptHistory / verifyScores / verifyDiagnosis live inside metadata
+  // on the wire; surface them at the top level of the frontend Chunk.
+  const meta = metadata as Record<string, unknown>;
+  return {
+    id: raw.id,
+    episodeId: raw.episodeId,
+    shotId: raw.shotId,
+    idx: raw.idx,
+    text: raw.text,
+    textNormalized: raw.textNormalized,
+    subtitleText: raw.subtitleText,
+    status: raw.status,
+    selectedTakeId: raw.selectedTakeId,
+    boundaryHash: raw.boundaryHash ?? undefined,
+    charCount: raw.charCount,
+    lastEditedAt: raw.lastEditedAt ?? undefined,
+    metadata,
+    takes: raw.takes.map(toTake),
+    stageRuns: raw.stageRuns.map(toStageRun),
+    attemptHistory: meta.attemptHistory as AttemptRecord[] | undefined,
+    verifyScores: meta.verifyScores as VerifyScores | undefined,
+    verifyDiagnosis: meta.verifyDiagnosis as Chunk["verifyDiagnosis"],
+  };
+}
+
 function toEpisodeSummary(raw: ApiEpisodeSummary): EpisodeSummary {
-  return raw as unknown as EpisodeSummary;
+  return {
+    id: raw.id,
+    title: raw.title,
+    status: raw.status,
+    locked: readLocked(raw as unknown as Record<string, unknown>),
+    chunkCount: raw.chunkCount,
+    doneCount: raw.doneCount,
+    failedCount: raw.failedCount,
+    updatedAt: raw.updatedAt,
+  };
 }
 
 function toEpisode(raw: ApiEpisodeDetail): Episode {
-  return raw as unknown as Episode;
+  if (!Array.isArray(raw.chunks)) {
+    throw new Error("EpisodeDetail.chunks missing or not an array");
+  }
+  return {
+    id: raw.id,
+    title: raw.title,
+    description: raw.description,
+    status: raw.status,
+    locked: readLocked(raw as unknown as Record<string, unknown>),
+    scriptUri: raw.scriptUri,
+    config: raw.config,
+    createdAt: raw.createdAt,
+    updatedAt: raw.updatedAt,
+    metadata: raw.metadata ?? {},
+    chunks: raw.chunks.map(toChunk),
+  };
 }
 
 // ---------------------------------------------------------------------------
@@ -104,7 +225,11 @@ export function useEpisode(id: string | null): HookResult<Episode> {
 
 export async function createEpisode(id: string, file: File): Promise<void> {
   const { error } = await api.POST("/episodes", {
-    body: { id, script: file } as never, // multipart — openapi-fetch handles FormData
+    // `as never` here is a known openapi-fetch limitation: its generated
+    // body type for multipart endpoints is a string, but we pass the raw
+    // object through to bodySerializer which builds the FormData. The
+    // runtime payload is correct; the cast only silences the type check.
+    body: { id, script: file } as never,
     bodySerializer: (body: Record<string, unknown>) => {
       const fd = new FormData();
       fd.append("id", body.id as string);
@@ -150,6 +275,9 @@ export async function runEpisode(
   if (maxChunkChars !== undefined) body.maxChunkChars = maxChunkChars;
   const { data, error } = await api.POST("/episodes/{episode_id}/run", {
     params: { path: { episode_id: id } },
+    // `body` has a dynamic shape (conditionally includes maxChunkChars). The
+    // OpenAPI-generated RunRequest type is stricter; we assert the superset
+    // structurally. If schema regenerates with maxChunkChars, drop `as never`.
     body: body as never,
   });
   if (error) throw apiError(error);
@@ -317,6 +445,3 @@ export async function updateConfig(
   return data!.config;
 }
 
-export async function exportEpisode(id: string, dir: string): Promise<void> {
-  throw new Error(`exportEpisode not implemented (target: ${dir})`);
-}

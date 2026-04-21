@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useCallback } from "react";
+import { useState, useCallback, useEffect, useRef } from "react";
 import { Lock } from "lucide-react";
 import * as Popover from "@radix-ui/react-popover";
 import type { Episode, EpisodeStatus } from "@/lib/types";
@@ -37,6 +37,20 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
   const [regenConfirmOpen, setRegenConfirmOpen] = useState(false);
   const [exporting, setExporting] = useState(false);
   const [maxChunkChars, setMaxChunkChars] = useState(200);
+  const exportAbortRef = useRef<AbortController | null>(null);
+  const mountedRef = useRef(true);
+
+  // Cleanup on unmount: abort in-flight export + block late state updates.
+  // Without this, if the user switches episode while the export fetch or
+  // poll loop is pending, setExporting(false) fires on an unmounted
+  // component and React logs a warning.
+  useEffect(() => {
+    mountedRef.current = true;
+    return () => {
+      mountedRef.current = false;
+      exportAbortRef.current?.abort();
+    };
+  }, []);
 
   const handleScriptDownload = useCallback(async () => {
     try {
@@ -203,23 +217,29 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
                 disabled={exporting}
                 onClick={async () => {
                   if (exporting) return;
+                  // Abort any previous in-flight export and start a new controller.
+                  exportAbortRef.current?.abort();
+                  const controller = new AbortController();
+                  exportAbortRef.current = controller;
                   setExporting(true);
                   try {
                     // 1. Trigger async export
                     const triggerRes = await fetch(
                       `${getApiUrl()}/episodes/${episode.id}/export`,
-                      { method: "POST", credentials: "include" },
+                      { method: "POST", credentials: "include", signal: controller.signal },
                     );
                     if (!triggerRes.ok) throw new Error(await triggerRes.text());
+                    if (!mountedRef.current || controller.signal.aborted) return;
                     toast.info("导出已开始，完成后自动下载");
 
                     // 2. Poll for completion
                     const maxAttempts = 120; // 2 min max
                     for (let i = 0; i < maxAttempts; i++) {
                       await new Promise((r) => setTimeout(r, 1000));
+                      if (!mountedRef.current || controller.signal.aborted) return;
                       const statusRes = await fetch(
                         `${getApiUrl()}/episodes/${episode.id}/export/status`,
-                        { credentials: "include" },
+                        { credentials: "include", signal: controller.signal },
                       );
                       if (!statusRes.ok) continue;
                       const status = await statusRes.json();
@@ -227,10 +247,11 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
                         // 3. Download
                         const dlRes = await fetch(
                           `${getApiUrl()}/episodes/${episode.id}/export/download`,
-                          { credentials: "include" },
+                          { credentials: "include", signal: controller.signal },
                         );
                         if (!dlRes.ok) throw new Error(await dlRes.text());
                         const blob = await dlRes.blob();
+                        if (!mountedRef.current || controller.signal.aborted) return;
                         const a = document.createElement("a");
                         a.href = URL.createObjectURL(blob);
                         a.download = `${episode.id}-export.zip`;
@@ -242,12 +263,21 @@ export function EpisodeHeader({ episode, running, runPending = false, onRun, onC
                       if (status.status === "failed") {
                         throw new Error(status.error || "export failed");
                       }
+                      if (status.status === "none") {
+                        // Export state lives in server memory; "none"
+                        // during an active poll means the server
+                        // restarted and lost it. Ask user to retry.
+                        throw new Error("服务可能已重启，请重新点击导出");
+                      }
                     }
                     throw new Error("导出超时");
                   } catch (e) {
-                    toast.error("导出失败", { description: (e as Error).message });
+                    if (controller.signal.aborted) return;
+                    if (mountedRef.current) {
+                      toast.error("导出失败", { description: (e as Error).message });
+                    }
                   } finally {
-                    setExporting(false);
+                    if (mountedRef.current) setExporting(false);
                   }
                 }}
               >
